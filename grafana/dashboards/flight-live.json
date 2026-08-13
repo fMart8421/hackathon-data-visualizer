@@ -1,0 +1,276 @@
+{
+  "uid": "flight-live",
+  "title": "Flight live",
+  "description": "Phase 2: altitude profile and the three BME280 scalars, raw against calibrated. Always shows the most recent mission. Dashboard variables arrive in phase 5.",
+  "tags": ["telemetry", "phase-2"],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Altitude",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 6, "w": 5, "x": 0, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "lengthm",
+          "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 11000 },
+              { "color": "orange", "value": 25000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT altitude_m\nFROM position\nWHERE mission_id = (SELECT mission_id FROM mission ORDER BY started_at DESC LIMIT 1)\nORDER BY event_time DESC\nLIMIT 1;"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Vertical speed",
+      "description": "Positive on the way up, sharply negative the moment the balloon bursts.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 6, "w": 5, "x": 5, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "velocityms",
+          "decimals": 2,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 0 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT vertical_speed_ms\nFROM position\nWHERE mission_id = (SELECT mission_id FROM mission ORDER BY started_at DESC LIMIT 1)\nORDER BY event_time DESC\nLIMIT 1;"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Altitude profile",
+      "description": "Ascent at roughly 5 m/s, burst at 30 km, parachute descent that slows as the air thickens.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 6, "w": 14, "x": 10, "y": 0 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "lengthm",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, altitude_m AS \"altitude\"\nFROM position\nWHERE $__timeFilter(event_time)\n  AND mission_id = (SELECT mission_id FROM mission ORDER BY started_at DESC LIMIT 1)\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Air temperature",
+      "description": "Falls to about -55 C at the 11 km tropopause, then inverts and climbs through the stratosphere.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 9, "w": 8, "x": 0, "y": 6 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "raw" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-orange" } },
+              { "id": "custom.lineWidth", "value": 1 },
+              { "id": "custom.fillOpacity", "value": 0 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "calibrated" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, value_raw AS \"raw\", value AS \"calibrated\"\nFROM observation\nWHERE $__timeFilter(event_time)\n  AND metric_key = 'air_temperature'\n  AND mission_id = (SELECT mission_id FROM mission ORDER BY started_at DESC LIMIT 1)\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Pressure",
+      "description": "Exponential decay from 1013 hPa at the surface to about 12 hPa at ceiling.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 9, "w": 8, "x": 8, "y": 6 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pressurepa",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "raw" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-orange" } },
+              { "id": "custom.lineWidth", "value": 1 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "calibrated" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, value_raw AS \"raw\", value AS \"calibrated\"\nFROM observation\nWHERE $__timeFilter(event_time)\n  AND metric_key = 'pressure'\n  AND mission_id = (SELECT mission_id FROM mission ORDER BY started_at DESC LIMIT 1)\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Relative humidity",
+      "description": "Saturated in the cloud deck below 3 km, effectively zero above 10 km.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 6 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "humidity",
+          "decimals": 1,
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "raw" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-orange" } },
+              { "id": "custom.lineWidth", "value": 1 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "calibrated" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, value_raw AS \"raw\", value AS \"calibrated\"\nFROM observation\nWHERE $__timeFilter(event_time)\n  AND metric_key = 'relative_humidity'\n  AND mission_id = (SELECT mission_id FROM mission ORDER BY started_at DESC LIMIT 1)\nORDER BY 1;"
+        }
+      ]
+    }
+  ]
+}

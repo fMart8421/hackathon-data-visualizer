@@ -1,0 +1,26 @@
+[project]
+name = "telemetry-generator"
+version = "0.2.0"
+description = "Synthetic stratospheric balloon telemetry for the visualization platform"
+requires-python = ">=3.12"
+
+# psycopg is the only runtime dependency: DEC-09 locks the stack to PostgreSQL
+# with no ORM, and something has to speak the wire protocol. The binary extra
+# avoids needing libpq and a compiler in the image.
+dependencies = ["psycopg[binary]>=3.2,<4"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+py-modules = ["flight", "sensors", "contract", "sinks", "cli"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
