@@ -71,6 +71,24 @@ services:
       retries: 12
       start_period: 20s
 
+  # Run as a one-off, never as a long-lived service: `docker compose run --rm
+  # generator ...`, which is what make generate / demo / test call. The profile
+  # keeps it out of `make up`.
+  generator:
+    build: ./generator
+    image: telemetry-generator
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TELEMETRY_DSN: postgresql://${POSTGRES_USER:-telemetry}:${POSTGRES_PASSWORD:-telemetry}@db:5432/${POSTGRES_DB:-telemetry}
+      PYTHONPATH: /app/src
+      TZ: UTC
+    volumes:
+      # Source is mounted, so a code change needs no rebuild.
+      - ./generator:/app
+
 volumes:
   pgdata:
   grafana-storage:
