@@ -1,6 +1,14 @@
 # Local environment, never committed. Copy from .env.example.
 .env
 
+# Provided measurements: 663 MB, and 18703 of those files are MATLAB binaries.
+# Too big for git. Keep the folder alongside the repo, or move it to Git LFS or
+# shared storage if it has to be versioned. Remove this line if you decide the
+# raw data belongs in history after all.
+data/
+# The CSV that ingest/matlab/export_rtk.m produces is derived, not source.
+data/export/
+
 # Generator / replayer artifacts
 *.ndjson
 *.ndjson.gz
