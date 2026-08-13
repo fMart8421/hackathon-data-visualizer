@@ -1,0 +1,21 @@
+# Local environment, never committed. Copy from .env.example.
+.env
+
+# Generator / replayer artifacts
+*.ndjson
+*.ndjson.gz
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

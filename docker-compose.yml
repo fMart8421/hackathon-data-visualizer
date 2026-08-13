@@ -1,0 +1,76 @@
+# Phase 1 foundations: PostgreSQL 16 + Grafana OSS (DEC-09).
+# Migrations and seed are applied by `make up`, not by the image entrypoint, so
+# that the same code path runs on a fresh volume and on an existing one.
+
+name: telemetry
+
+services:
+  db:
+    image: postgres:16
+    container_name: telemetry-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-telemetry}
+      POSTGRES_USER: ${POSTGRES_USER:-telemetry}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-telemetry}
+      # Read by db/apply.sh to create the Grafana read-only role.
+      GRAFANA_DB_USER: ${GRAFANA_DB_USER:-grafana_ro}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:-grafana_ro}
+      # DEC-01: everything stored and served in UTC.
+      TZ: UTC
+      PGTZ: UTC
+    command:
+      - postgres
+      - -c
+      - timezone=UTC
+      - -c
+      - log_timezone=UTC
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db:/db:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  grafana:
+    image: grafana/grafana-oss:12.0.2
+    container_name: telemetry-grafana
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Requirement 9: auto-refresh between 1 and 5 s.
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: ${GF_DASHBOARDS_MIN_REFRESH_INTERVAL:-1s}
+      # Consumed by grafana/provisioning/datasources/postgres.yml.
+      TELEMETRY_DB_HOST: db
+      TELEMETRY_DB_PORT: "5432"
+      TELEMETRY_DB_NAME: ${POSTGRES_DB:-telemetry}
+      TELEMETRY_DB_USER: ${GRAFANA_DB_USER:-grafana_ro}
+      TELEMETRY_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:-grafana_ro}
+      TZ: UTC
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+volumes:
+  pgdata:
+  grafana-storage:

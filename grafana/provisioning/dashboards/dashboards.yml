@@ -1,0 +1,18 @@
+# Loads every dashboard JSON in grafana/dashboards at startup and rescans every
+# 10 s (DEC-10). Dashboards edited in the UI must be exported back to that
+# directory and committed; nothing survives only in the container volume.
+
+apiVersion: 1
+
+providers:
+  - name: telemetry
+    orgId: 1
+    folder: Telemetry
+    folderUid: telemetry
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

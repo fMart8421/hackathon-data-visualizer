@@ -1,0 +1,105 @@
+{
+  "uid": "platform-health",
+  "title": "Platform health",
+  "description": "Phase 1 smoke dashboard: proves Grafana reads PostgreSQL, and shows the catalog every other dashboard is built from.",
+  "tags": ["telemetry", "phase-1"],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Stored records",
+      "description": "Zero everywhere until the phase 2 generator runs. A flat panel with rows present is a dashboard bug; zero rows is expected here.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "options": { "showHeader": true },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT 'mission' AS table_name, count(*) AS row_count FROM mission\nUNION ALL SELECT 'position', count(*) FROM position\nUNION ALL SELECT 'observation', count(*) FROM observation\nUNION ALL SELECT 'waveform_block', count(*) FROM waveform_block\nUNION ALL SELECT 'event', count(*) FROM event\nUNION ALL SELECT 'ingest_batch', count(*) FROM ingest_batch\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Metric catalog",
+      "description": "Source of truth for dashboard variables. Adding a row here must be enough to get a new panel (requirement 7).",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 16, "w": 16, "x": 8, "y": 0 },
+      "options": { "showHeader": true },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT metric_key, kind, canonical_unit, display_unit, valid_min, valid_max, warn_high, frame\nFROM metric\nORDER BY kind, metric_key;"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Sensors on the platform",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "options": { "showHeader": true },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT device_id, sensor_id, model, manufacturer, mount_position\nFROM sensor\nORDER BY device_id, sensor_id;"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Recent ingest batches",
+      "description": "Pipeline health: batch_time is when the platform measured, received_at is when the row landed (DEC-01). The gap is end-to-end lag.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "options": { "showHeader": true },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT received_at, batch_time,\n       round(extract(epoch FROM received_at - batch_time)::numeric, 3) AS lag_s,\n       mission_id, device_id, source, seq, record_count, status\nFROM ingest_batch\nWHERE $__timeFilter(received_at)\nORDER BY received_at DESC\nLIMIT 50;"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+# PostgreSQL datasource, provisioned at startup (DEC-10). Values come from the
+# environment set on the grafana service in docker-compose.yml.
+#
+# The credentials are the read-only role created by db/apply.sh: Grafana reads
+# the flight, it never writes to it.
+
+apiVersion: 1
+
+datasources:
+  - name: telemetry-postgres
+    uid: telemetry-postgres
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: $TELEMETRY_DB_HOST:$TELEMETRY_DB_PORT
+    user: $TELEMETRY_DB_USER
+    isDefault: true
+    editable: false
+    jsonData:
+      database: $TELEMETRY_DB_NAME
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+      maxOpenConns: 20
+      maxIdleConns: 10
+      connMaxLifetime: 14400
+      # Floor for $__interval. Requirement 9 wants 1 s refresh to be meaningful.
+      timeInterval: 1s
+    secureJsonData:
+      password: $TELEMETRY_DB_PASSWORD
