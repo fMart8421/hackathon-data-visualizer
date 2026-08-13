@@ -6,7 +6,7 @@ SHELL   := /bin/sh
 COMPOSE := docker compose
 
 .DEFAULT_GOAL := help
-.PHONY: help env up down reset migrate psql status logs generate demo export replay test
+.PHONY: help env up down reset migrate psql status logs generate demo build export replay test
 
 help:
 	@echo "make up        start PostgreSQL and Grafana, apply migrations and seed"
@@ -16,11 +16,14 @@ help:
 	@echo "make psql      open a psql shell on the running database"
 	@echo "make status    container status"
 	@echo "make logs      follow logs"
-	@echo "make generate  run the generator in real time            (phase 2)"
-	@echo "make demo      run the generator at 60x                  (phase 2)"
+	@echo "make generate  run the generator in real time, 150 min"
+	@echo "make demo      run the generator at 60x, 2.5 min"
+	@echo "make test      generator tests"
+	@echo "make build     rebuild the generator image"
 	@echo "make export FILE=flight.ndjson   full flight to file     (phase 6)"
 	@echo "make replay FILE=flight.ndjson   replay a file           (phase 6)"
-	@echo "make test      generator tests                           (phase 2)"
+	@echo
+	@echo "extra flags:   make demo ARGS=\"--duration-min 20 --seed 7\""
 
 # .env is gitignored; first run bootstraps it from the versioned example.
 env:
@@ -52,21 +55,26 @@ status:
 logs:
 	$(COMPOSE) logs -f --tail=100
 
-# --- Phases 2 and 6 ---------------------------------------------------------
-# Declared here because the command table in docs/data-model.md is the contract.
-# Each becomes a real recipe when its phase lands.
+# --- Generator --------------------------------------------------------------
+# One-off containers, so nothing has to be installed on the host. ARGS passes
+# extra flags through, e.g. make demo ARGS="--duration-min 20".
 
-generate:
-	@echo "generator not implemented yet: phase 2 in docs/data-model.md" && exit 1
+generate: env
+	$(COMPOSE) run --rm generator --speed 1 $(ARGS)
 
-demo:
-	@echo "generator not implemented yet: phase 2 in docs/data-model.md" && exit 1
+demo: env
+	$(COMPOSE) run --rm generator --speed 60 $(ARGS)
+
+test:
+	$(COMPOSE) run --rm --entrypoint pytest generator
+
+build:
+	$(COMPOSE) build generator
+
+# --- Phase 6 ----------------------------------------------------------------
 
 export:
 	@echo "file mode not implemented yet: phase 6 in docs/data-model.md" && exit 1
 
 replay:
 	@echo "replayer not implemented yet: phase 6 in docs/data-model.md" && exit 1
-
-test:
-	@echo "generator tests not implemented yet: phase 2 in docs/data-model.md" && exit 1
