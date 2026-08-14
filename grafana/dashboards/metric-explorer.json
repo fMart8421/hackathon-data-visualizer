@@ -26,11 +26,21 @@
   "templating": {
     "list": [
       {
+        "name": "kind",
+        "type": "custom",
+        "label": "Data",
+        "description": "Measured and synthetic are never averaged together.",
+        "query": "measured : measured, synthetic : synthetic",
+        "multi": true,
+        "includeAll": false,
+        "current": { "text": "measured", "value": ["measured"] }
+      },
+      {
         "name": "metric",
         "type": "query",
         "label": "Metric",
         "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
-        "query": "SELECT metric_key FROM metric WHERE metric_key IN (SELECT DISTINCT metric_key FROM observation) ORDER BY metric_key;",
+        "query": "SELECT DISTINCT o.metric_key FROM observation o JOIN mission m ON m.mission_id = o.mission_id WHERE m.kind IN ($kind) ORDER BY 1;",
         "refresh": 2,
         "sort": 1,
         "multi": true,
@@ -78,7 +88,7 @@
           "rawQuery": true,
           "editorMode": "code",
           "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
-          "rawSql": "SELECT $__timeGroup(event_time, '$__interval') AS time, avg(value_raw) AS \"raw\", avg(value) AS \"calibrated\"\nFROM observation\nWHERE metric_key IN ($metric) AND $__timeFilter(event_time)\nGROUP BY 1 ORDER BY 1;"
+          "rawSql": "SELECT $__timeGroup(o.event_time, '$__interval') AS time, avg(o.value_raw) AS \"raw\", avg(o.value) AS \"calibrated\"\nFROM observation o\nJOIN mission m ON m.mission_id = o.mission_id\nWHERE o.metric_key IN ($metric) AND m.kind IN ($kind) AND $__timeFilter(o.event_time)\nGROUP BY 1 ORDER BY 1;"
         }
       ]
     }

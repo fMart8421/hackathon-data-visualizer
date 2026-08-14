@@ -1,0 +1,163 @@
+{
+  "uid": "uv-index",
+  "title": "UV index (synthetic)",
+  "description": "Requirement 5. SYNTHETIC: nothing in the provided data measured UV. Generated under DEC-18 from the sun's real position over Taveiro on 28 June, so the curve is a real solar geometry with cloud attenuation over it. The sensor runs all day, which is why this dashboard spans 24 hours while the magnetometer and IMU only cover the 79 minute ride.",
+  "tags": ["telemetry", "phase-6", "requirement-5", "synthetic"],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Telemetry",
+      "tags": ["telemetry"],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": "",
+      "url": ""
+    }
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "2025-06-28T00:00:00Z", "to": "2025-06-29T00:00:00Z" },
+  "panels": [
+    {
+      "id": 10,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Synthetic data.** No UV sensor appears anywhere in `data/`. This is generated (DEC-18) from the real solar elevation over this site and date; the mission is labelled `kind = 'synthetic'`."
+      }
+    },
+    {
+      "id": 1,
+      "type": "gauge",
+      "title": "Peak UV index",
+      "description": "Thresholds follow the WHO bands: low, moderate, high, very high, extreme.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 11, "w": 8, "x": 0, "y": 3 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "minVizWidth": 75,
+        "minVizHeight": 75
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "min": 0,
+          "max": 12,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 3 },
+              { "color": "orange", "value": 6 },
+              { "color": "red", "value": 8 },
+              { "color": "purple", "value": 11 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT max(value) AS value FROM observation\nWHERE metric_key = 'uv_index' AND $__timeFilter(event_time);"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "24 hour profile",
+      "description": "Hourly mean. Zero overnight, peaking after 12:30 UTC because Taveiro sits 8.5 degrees west, which puts solar noon about 34 minutes late.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 11, "w": 16, "x": 8, "y": 3 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "min": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "showPoints": "never",
+            "gradientMode": "scheme"
+          },
+          "color": { "mode": "continuous-GrYlRd" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 3 },
+              { "color": "orange", "value": 6 },
+              { "color": "red", "value": 8 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT date_trunc('hour', event_time) AS time, avg(value) AS \"uv index\"\nFROM observation\nWHERE metric_key = 'uv_index' AND $__timeFilter(event_time)\nGROUP BY 1 ORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Full resolution, calibrated against raw",
+      "description": "The raw trace never reaches zero at night: a photodiode front end reads its own dark current, and calibration is what removes it (DEC-05).",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 14 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "raw" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-orange" } }] },
+          { "matcher": { "id": "byName", "options": "calibrated" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, value_raw AS \"raw\", value AS \"calibrated\"\nFROM observation\nWHERE metric_key = 'uv_index' AND $__timeFilter(event_time)\nORDER BY 1;"
+        }
+      ]
+    }
+  ]
+}

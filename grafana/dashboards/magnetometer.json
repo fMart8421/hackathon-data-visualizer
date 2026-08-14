@@ -1,0 +1,230 @@
+{
+  "uid": "magnetometer",
+  "title": "Magnetometer (synthetic)",
+  "description": "Requirement 3. SYNTHETIC: nothing in the provided data measured a magnetic field. Generated under DEC-18 from the real geomagnetic field at Taveiro and a route that was really ridden, so the arrows rotate because the platform turned, not because anything was animated. The field is fixed in the ground frame; the body-frame components change only with heading.",
+  "tags": ["telemetry", "phase-6", "requirement-3", "synthetic"],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Telemetry",
+      "tags": ["telemetry"],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": "",
+      "url": ""
+    }
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "2025-06-28T10:00:00Z", "to": "2025-06-28T11:20:00Z" },
+  "panels": [
+    {
+      "id": 10,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Synthetic data.** No magnetometer was ever fitted to anything in `data/`. These values are generated (DEC-18) from the real field at this site and a real recorded route, and the mission is labelled `kind = 'synthetic'`. Everything on the *Particulates* dashboard, which uses the same route, is measured."
+      }
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total field",
+      "description": "Earth's field strength at Taveiro. Constant by construction: turning the platform cannot change it.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 3 },
+      "options": {
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "suffix: µT", "decimals": 2, "color": { "mode": "fixed", "fixedColor": "purple" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT avg(value) AS value FROM observation\nWHERE metric_key = 'mag_field' AND $__timeFilter(event_time);"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Bx, By, Bz",
+      "description": "Body-frame components: x forward, y right, z down.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 12, "x": 6, "y": 3 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "orientation": "horizontal"
+      },
+      "fieldConfig": { "defaults": { "unit": "suffix: µT", "decimals": 2 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT vx AS \"Bx\", vy AS \"By\", vz AS \"Bz\"\nFROM observation\nWHERE metric_key = 'mag_field' AND $__timeFilter(event_time)\nORDER BY event_time DESC LIMIT 1;"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Hard-iron error, uncalibrated",
+      "description": "How far the raw reading sits from the calibrated one. A fixed magnetic bias from the platform's own ferrous parts (DEC-05).",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 3 },
+      "options": {
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "suffix: µT", "decimals": 2, "color": { "mode": "fixed", "fixedColor": "semi-dark-orange" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT avg(value_raw - value) AS value FROM observation\nWHERE metric_key = 'mag_field' AND $__timeFilter(event_time);"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "geomap",
+      "title": "Horizontal field vector along the route",
+      "description": "Each marker is rotated to the bearing of the horizontal component (Bx, By). Size is fixed on purpose: the horizontal field is a constant 25 uT here, so sizing by strength would make every arrow identical and say nothing. One marker per minute, because at 1 Hz they overlap into a smear.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 14, "w": 14, "x": 0, "y": 8 },
+      "options": {
+        "view": { "id": "coords", "lat": 40.1968, "lon": -8.5095, "zoom": 15 },
+        "basemap": { "type": "osm-standard", "name": "OpenStreetMap", "config": {} },
+        "controls": { "showZoom": true, "showAttribution": true, "mouseWheelZoom": true, "showScale": true },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "Field vector",
+            "location": { "mode": "coords", "latitude": "latitude", "longitude": "longitude" },
+            "filterData": { "id": "byRefId", "options": "A" },
+            "config": {
+              "style": {
+                "size": { "fixed": 14 },
+                "color": { "fixed": "semi-dark-orange" },
+                "opacity": 0.9,
+                "rotation": { "fixed": 0, "field": "bearing", "min": -360, "max": 360 },
+                "symbol": { "mode": "fixed", "fixed": "img/icons/marker/triangle.svg" },
+                "symbolAlign": { "horizontal": "center", "vertical": "center" }
+              },
+              "showLegend": false
+            },
+            "tooltip": true
+          }
+        ]
+      },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "-- One marker per minute: at 1 Hz the arrows overlap into a smear.\nSELECT p.latitude, p.longitude,\n       degrees(atan2(o.vy, o.vx)) AS bearing,\n       sqrt(o.vx * o.vx + o.vy * o.vy) AS strength\nFROM observation o\nJOIN position p\n  ON p.mission_id = o.mission_id AND p.device_id = o.device_id AND p.seq = o.seq\nWHERE o.metric_key = 'mag_field' AND $__timeFilter(o.event_time)\n  AND o.seq % 60 = 0;"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Components over the ride",
+      "description": "Bx and By trade places as the platform turns; Bz barely moves, because the vertical field does not care which way you are pointing.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 14, "w": 10, "x": 14, "y": 8 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: µT",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0, "showPoints": "never" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Bx" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byName", "options": "By" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }] },
+          { "matcher": { "id": "byName", "options": "Bz" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }] },
+          { "matcher": { "id": "byName", "options": "total" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "text" } }] }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, vx AS \"Bx\", vy AS \"By\", vz AS \"Bz\", value AS \"total\"\nFROM observation\nWHERE metric_key = 'mag_field' AND $__timeFilter(event_time)\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Calibrated against uncalibrated magnitude",
+      "description": "The raw magnitude is wrong by a varying amount, because a fixed offset in the body frame rotates with the platform (DEC-05).",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 22 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: µT",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0, "showPoints": "never" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "raw" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-orange" } }] },
+          { "matcher": { "id": "byName", "options": "calibrated" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, value_raw AS \"raw\", value AS \"calibrated\"\nFROM observation\nWHERE metric_key = 'mag_field' AND $__timeFilter(event_time)\nORDER BY 1;"
+        }
+      ]
+    }
+  ]
+}
