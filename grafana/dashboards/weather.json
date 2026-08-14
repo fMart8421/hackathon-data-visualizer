@@ -1,0 +1,219 @@
+{
+  "uid": "weather",
+  "title": "Weather",
+  "description": "Requirement 6, temperature and humidity only: the measured data has no pressure sensor. Alcohol3 and CH4 are bench rigs with no GPS, so this is a time series, not a geomap; a geomap needs synthetic, geo-tagged data and is deferred to phase 6.",
+  "tags": ["telemetry", "phase-5", "requirement-6"],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Telemetry",
+      "tags": ["telemetry"],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": "",
+      "url": ""
+    }
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "2025-07-28T00:00:00Z", "to": "2025-07-28T21:00:00Z" },
+  "templating": {
+    "list": [
+      {
+        "name": "mission",
+        "type": "query",
+        "label": "Bench session",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+        "query": "SELECT DISTINCT mission_id FROM observation WHERE metric_key = 'air_temperature' AND mission_id NOT LIKE 'flight-%' ORDER BY 1;",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**No location for this data.** Air temperature and relative humidity were measured on the Akel Alcohol3 and CH4 bench rigs, indoors, with no GPS. This satisfies requirement 6 in time-series form only; the geomap form needs a co-located position, which only the synthetic balloon mission currently has (see OPEN-11 in `docs/data-model.md`)."
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Latest temperature",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 3 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "celsius", "decimals": 1 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT value FROM observation\nWHERE metric_key = 'air_temperature' AND mission_id = '$mission'\nORDER BY event_time DESC LIMIT 1;"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Latest humidity",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 3 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "humidity", "decimals": 1 },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT value FROM observation\nWHERE metric_key = 'relative_humidity' AND mission_id = '$mission'\nORDER BY event_time DESC LIMIT 1;"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Bench sessions with T/RH",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 3 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT count(DISTINCT mission_id) AS value FROM observation\nWHERE metric_key = 'air_temperature' AND mission_id NOT LIKE 'flight-%';"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Samples in $mission",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 3 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT count(*) AS value FROM observation\nWHERE metric_key = 'air_temperature' AND mission_id = '$mission';"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Air temperature, $mission",
+      "description": "Bench session, no GPS.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "decimals": 1,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" },
+          "color": { "mode": "fixed", "fixedColor": "semi-dark-orange" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, value AS \"temperature\"\nFROM observation\nWHERE metric_key = 'air_temperature' AND mission_id = '$mission' AND $__timeFilter(event_time)\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Relative humidity, $mission",
+      "description": "Bench session, no GPS.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "humidity",
+          "decimals": 1,
+          "min": 0,
+          "max": 100,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" },
+          "color": { "mode": "fixed", "fixedColor": "purple" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, value AS \"humidity\"\nFROM observation\nWHERE metric_key = 'relative_humidity' AND mission_id = '$mission' AND $__timeFilter(event_time)\nORDER BY 1;"
+        }
+      ]
+    }
+  ]
+}

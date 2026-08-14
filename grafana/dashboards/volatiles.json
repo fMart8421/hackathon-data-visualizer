@@ -1,0 +1,261 @@
+{
+  "uid": "volatiles",
+  "title": "Volatiles",
+  "description": "Requirement 2, composition and concentration. The Arduino 5V suite (MQ-4, MiCS-5524, MiCS-6814) logged five gas species at 1 Hz through 18 May 2026. Bench measurements: this rig had no GPS, so there is no location here — the geo-referenced measurements are on the Particulates dashboard. value_raw is the ADC count the board read, value is the ppm its firmware derived (DEC-05).",
+  "tags": ["telemetry", "phase-5", "requirement-2"],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Telemetry",
+      "tags": ["telemetry"],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": "",
+      "url": ""
+    }
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "2026-05-18T10:15:00Z", "to": "2026-05-18T20:00:00Z" },
+  "templating": {
+    "list": [
+      {
+        "name": "gas",
+        "type": "query",
+        "label": "Gas species",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+        "query": "SELECT DISTINCT metric_key FROM observation WHERE mission_id = 'volatiles-2026-05-18' AND metric_key LIKE '%_concentration' ORDER BY 1;",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Latest $gas",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "value"
+      },
+      "fieldConfig": { "defaults": { "unit": "suffix: ppm", "decimals": 2 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT value\nFROM observation\nWHERE metric_key = '$gas' AND mission_id = 'volatiles-2026-05-18'\nORDER BY event_time DESC LIMIT 1;"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Peak $gas",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": { "defaults": { "unit": "suffix: ppm", "decimals": 2 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT max(value) AS value\nFROM observation\nWHERE metric_key = '$gas' AND mission_id = 'volatiles-2026-05-18';"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Flagged suspect",
+      "description": "Share of readings outside the catalog's plausible range for this metric. The MiCS-6814 CO channel was never calibrated against clean air and reports values that are physically impossible, so they are stored and flagged rather than dropped.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 5 },
+              { "color": "red", "value": 40 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT round(100.0 * count(*) FILTER (WHERE quality = 'suspect') / greatest(count(*), 1), 1) AS value\nFROM observation\nWHERE metric_key = '$gas' AND mission_id = 'volatiles-2026-05-18';"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Samples",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT count(*) AS value\nFROM observation\nWHERE metric_key = '$gas' AND mission_id = 'volatiles-2026-05-18';"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "$gas, calibrated",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 5 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: ppm",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never" },
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, sensor_id AS metric, value\nFROM observation\nWHERE metric_key = '$gas' AND mission_id = 'volatiles-2026-05-18' AND $__timeFilter(event_time)\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "$gas, raw ADC count",
+      "description": "The same measurement before calibration (DEC-05).",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 5 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0, "showPoints": "never" },
+          "color": { "mode": "fixed", "fixedColor": "semi-dark-orange" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, sensor_id AS metric, value_raw\nFROM observation\nWHERE metric_key = '$gas' AND mission_id = 'volatiles-2026-05-18' AND $__timeFilter(event_time)\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Sensing element resistance, every channel",
+      "description": "What a metal-oxide sensor physically produces, before any ppm conversion. The MiCS-6814 is three separate elements, so it contributes three traces.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 14 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ohm",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, sensor_id AS metric, value\nFROM observation\nWHERE metric_key = 'gas_sensor_resistance' AND mission_id = 'volatiles-2026-05-18'\n  AND $__timeFilter(event_time)\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Species measured in this campaign",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 23 },
+      "options": { "showHeader": true },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT o.metric_key, o.sensor_id, m.canonical_unit,\n       count(*) AS samples,\n       round(min(o.value)::numeric, 2) AS min,\n       round(avg(o.value)::numeric, 2) AS avg,\n       round(max(o.value)::numeric, 2) AS max,\n       count(*) FILTER (WHERE o.quality = 'suspect') AS suspect\nFROM observation o\nJOIN metric m ON m.metric_key = o.metric_key\nWHERE o.mission_id = 'volatiles-2026-05-18' AND o.metric_key LIKE '%_concentration'\nGROUP BY o.metric_key, o.sensor_id, m.canonical_unit\nORDER BY o.metric_key, o.sensor_id;"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,294 @@
+{
+  "uid": "particulates",
+  "title": "Particulates",
+  "description": "Requirement 2, concentration against location and time. Three bike rides around Taveiro on 28 June 2025 carried an SPS30 with a GPS fix on every sample — the only mobile, geo-referenced measurement in the whole provided dataset. The other particle captures (car trips, Serra do Acor, ISO5 bench tests) have no coordinates and are listed in the table below.",
+  "tags": ["telemetry", "phase-5", "requirement-2"],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Telemetry",
+      "tags": ["telemetry"],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": "",
+      "url": ""
+    }
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "2025-06-28T00:00:00Z", "to": "2025-06-28T01:30:00Z" },
+  "templating": {
+    "list": [
+      {
+        "name": "pm",
+        "type": "custom",
+        "label": "Size fraction",
+        "query": "PM1.0 : pm1_0, PM2.5 : pm2_5, PM4.0 : pm4_0, PM10 : pm10",
+        "multi": false,
+        "includeAll": false,
+        "current": { "text": "PM2.5", "value": "pm2_5" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Mean $pm on the routes",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: µg/m³",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 25 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT avg(value) AS value\nFROM observation\nWHERE metric_key = '$pm' AND mission_id LIKE 'particles-%Coord';"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Peak $pm",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: µg/m³",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 25 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT max(value) AS value\nFROM observation\nWHERE metric_key = '$pm' AND mission_id LIKE 'particles-%Coord';"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Typical particle size",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "suffix: µm", "decimals": 2, "color": { "mode": "fixed", "fixedColor": "purple" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT avg(value) AS value\nFROM observation\nWHERE metric_key = 'typical_particle_size' AND mission_id LIKE 'particles-%Coord';"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Geo-referenced samples",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT count(*) AS value FROM position WHERE mission_id LIKE 'particles-%Coord';"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "geomap",
+      "title": "$pm along the Taveiro routes",
+      "description": "Every sample carries its own fix, so concentration is coloured onto the route itself.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 14, "w": 14, "x": 0, "y": 5 },
+      "options": {
+        "view": { "id": "coords", "lat": 40.1968, "lon": -8.5095, "zoom": 15 },
+        "basemap": { "type": "osm-standard", "name": "OpenStreetMap", "config": {} },
+        "controls": { "showZoom": true, "showAttribution": true, "mouseWheelZoom": true, "showScale": true },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "Concentration",
+            "location": { "mode": "coords", "latitude": "latitude", "longitude": "longitude" },
+            "filterData": { "id": "byRefId", "options": "A" },
+            "config": {
+              "style": {
+                "size": { "fixed": 6 },
+                "color": { "field": "value" },
+                "opacity": 0.8,
+                "symbol": { "mode": "fixed", "fixed": "img/icons/marker/circle.svg" }
+              },
+              "showLegend": true
+            },
+            "tooltip": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: µg/m³",
+          "decimals": 2,
+          "color": { "mode": "continuous-GrYlRd" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT p.latitude, p.longitude, o.value\nFROM observation o\nJOIN position p\n  ON p.mission_id = o.mission_id AND p.device_id = o.device_id AND p.seq = o.seq\nWHERE o.metric_key = '$pm' AND o.mission_id LIKE 'particles-%Coord'\n  AND $__timeFilter(o.event_time);"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "$pm over each ride",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 14, "w": 10, "x": 14, "y": 5 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: µg/m³",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 12, "showPoints": "never", "spanNulls": true }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, mission_id AS metric, value\nFROM observation\nWHERE metric_key = '$pm' AND mission_id LIKE 'particles-%Coord' AND $__timeFilter(event_time)\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "All size fractions, geo-referenced rides",
+      "description": "PM1.0 through PM10 together. The SPS30 logs mass concentration labelled ug/cm^3, which is wrong by a factor of a million; stored and shown as ug/m3.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 19 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: µg/m³",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 0, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, metric_key AS metric, avg(value) AS value\nFROM observation\nWHERE metric_key IN ('pm1_0','pm2_5','pm4_0','pm10')\n  AND mission_id LIKE 'particles-%Coord' AND $__timeFilter(event_time)\nGROUP BY 1, 2 ORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Every particulate capture",
+      "description": "Only the three _Coord rides carry coordinates. The rest are car trips, a mountain run and ISO5 bench tests, with no position recorded.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 28 },
+      "options": { "showHeader": true },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT m.mission_id, m.started_at,\n       count(*) FILTER (WHERE o.metric_key = 'pm2_5') AS pm2_5_samples,\n       round(avg(o.value) FILTER (WHERE o.metric_key = 'pm2_5')::numeric, 2) AS avg_pm2_5,\n       round(max(o.value) FILTER (WHERE o.metric_key = 'pm2_5')::numeric, 2) AS peak_pm2_5,\n       (SELECT count(*) FROM position p WHERE p.mission_id = m.mission_id) AS positions\nFROM mission m\nJOIN observation o ON o.mission_id = m.mission_id\nWHERE m.mission_id LIKE 'particles-%'\nGROUP BY m.mission_id, m.started_at\nORDER BY m.started_at;"
+        }
+      ]
+    }
+  ]
+}

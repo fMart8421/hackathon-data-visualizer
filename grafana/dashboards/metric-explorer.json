@@ -1,0 +1,86 @@
+{
+  "uid": "metric-explorer",
+  "title": "Metric explorer",
+  "description": "Requirement 7. One panel per metric, generated from the $metric variable's repeat rather than one panel per metric hand-built in this JSON. The variable is scoped to metrics that currently have at least one observation: a metric.metric_key with no data yet is a data-source gap, not something a panel should render as a permanently empty tile (see CLAUDE.md, 'a flat or empty panel is a data-source bug'). Add a row to metric and start sending it data, and a panel appears here with no dashboard edit. The query uses IN ($metric), not = '$metric': $metric is multi-valued, so Grafana quotes each value itself and wrapping it again produces ''value''. This dashboard deliberately spans every capture epoch, so individual series are sparse; the per-dataset dashboards show each capture at its own scale.",
+  "tags": ["telemetry", "phase-5", "requirement-7"],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Telemetry",
+      "tags": ["telemetry"],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": "",
+      "url": ""
+    }
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "2025-05-01T00:00:00Z", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "metric",
+        "type": "query",
+        "label": "Metric",
+        "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+        "query": "SELECT metric_key FROM metric WHERE metric_key IN (SELECT DISTINCT metric_key FROM observation) ORDER BY metric_key;",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": { "text": "All", "value": ["$__all"] }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "$metric",
+      "repeat": "metric",
+      "repeatDirection": "h",
+      "maxPerRow": 3,
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never", "spanNulls": true }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "raw" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-orange" } },
+              { "id": "custom.lineWidth", "value": 1 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "calibrated" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT $__timeGroup(event_time, '$__interval') AS time, avg(value_raw) AS \"raw\", avg(value) AS \"calibrated\"\nFROM observation\nWHERE metric_key IN ($metric) AND $__timeFilter(event_time)\nGROUP BY 1 ORDER BY 1;"
+        }
+      ]
+    }
+  ]
+}

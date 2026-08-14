@@ -1,0 +1,231 @@
+{
+  "uid": "gnss-survey",
+  "title": "GNSS survey-in",
+  "description": "Requirement 1, the u-blox survey-in occupations. A receiver averaging its own position over days: mean accuracy converges from about 12 cm to 1.3 cm over the twelve-day Data0 capture. ECEF coordinates converted to WGS84 on ingest, validated by landing within 2 m of the RTK base's independently measured coordinate. Time range is pinned to the long capture; the Data1 occupations are in May 2026.",
+  "tags": ["telemetry", "phase-5", "requirement-1"],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Telemetry",
+      "tags": ["telemetry"],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": "",
+      "url": ""
+    }
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "2026-04-01T12:00:00Z", "to": "2026-04-13T15:00:00Z" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Accuracy at survey start",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "lengthm", "decimals": 3, "color": { "mode": "fixed", "fixedColor": "orange" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT value\nFROM observation\nWHERE mission_id = 'survey-data0-file12' AND metric_key = 'position_accuracy'\nORDER BY event_time ASC LIMIT 1;"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Accuracy after 12 days",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "lengthm", "decimals": 4, "color": { "mode": "fixed", "fixedColor": "green" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT value\nFROM observation\nWHERE mission_id = 'survey-data0-file12' AND metric_key = 'position_accuracy'\nORDER BY event_time DESC LIMIT 1;"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Fixes in this occupation",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT count(*) AS value FROM position WHERE mission_id = 'survey-data0-file12';"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Position spread over 12 days",
+      "description": "How far the averaged position wandered while converging.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "lengthm", "decimals": 2, "color": { "mode": "fixed", "fixedColor": "blue" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT (max(latitude) - min(latitude)) * 111320 AS value\nFROM position WHERE mission_id = 'survey-data0-file12';"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Mean accuracy convergence",
+      "description": "Hourly average. Logarithmic axis, because most of the improvement happens in the first day.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 12, "w": 14, "x": 0, "y": 5 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "lengthm",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "scaleDistribution": { "type": "log", "log": 10 }
+          },
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT date_trunc('hour', event_time) AS time, avg(value) AS \"mean accuracy\"\nFROM observation\nWHERE mission_id = 'survey-data0-file12' AND metric_key = 'position_accuracy'\n  AND $__timeFilter(event_time)\nGROUP BY 1 ORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "geomap",
+      "title": "Averaged position while converging",
+      "description": "Each point is the receiver's running mean position. The cluster tightens as the survey runs.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 12, "w": 10, "x": 14, "y": 5 },
+      "options": {
+        "view": { "id": "coords", "lat": 40.197768, "lon": -8.509942, "zoom": 20 },
+        "basemap": { "type": "osm-standard", "name": "OpenStreetMap", "config": {} },
+        "controls": { "showZoom": true, "showAttribution": true, "mouseWheelZoom": true, "showScale": true },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "Mean position",
+            "location": { "mode": "coords", "latitude": "latitude", "longitude": "longitude" },
+            "config": {
+              "style": {
+                "size": { "fixed": 3 },
+                "color": { "fixed": "blue" },
+                "opacity": 0.3,
+                "symbol": { "mode": "fixed", "fixed": "img/icons/marker/circle.svg" }
+              },
+              "showLegend": false
+            },
+            "tooltip": true
+          }
+        ]
+      },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT latitude, longitude\nFROM position\nWHERE mission_id = 'survey-data0-file12' AND $__timeFilter(event_time);"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "All survey-in occupations",
+      "description": "Data1 filenames carry their own timestamps; Data0/File12 has its start estimated from the MATLAB file's creation time minus the survey duration, which is recorded in the mission description.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 17 },
+      "options": { "showHeader": true },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "-- Correlated subqueries, not joins: joining position and observation\n-- together multiplies them, and a 101852-fix occupation squares into ten\n-- billion rows before the aggregate ever runs.\nSELECT m.mission_id, m.started_at, m.ended_at,\n       (SELECT count(*) FROM position p WHERE p.mission_id = m.mission_id) AS fixes,\n       (SELECT round(min(o.value)::numeric, 4) FROM observation o\n         WHERE o.mission_id = m.mission_id AND o.metric_key = 'position_accuracy') AS best_accuracy_m,\n       (SELECT round(max(o.value)::numeric, 4) FROM observation o\n         WHERE o.mission_id = m.mission_id AND o.metric_key = 'position_accuracy') AS worst_accuracy_m\nFROM mission m\nWHERE m.mission_id LIKE 'survey-%'\nORDER BY m.started_at;"
+        }
+      ]
+    }
+  ]
+}

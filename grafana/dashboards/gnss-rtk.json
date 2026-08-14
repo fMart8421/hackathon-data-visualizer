@@ -1,0 +1,305 @@
+{
+  "uid": "gnss-rtk",
+  "title": "GNSS RTK",
+  "description": "Requirement 1, the RTK captures of 25-27 November 2025. Base and rover are two receivers about 19 m apart, both static: this is a precision measurement, not a track. The 25 Nov rover held an RTK fix; the 27 Nov rover ran with no corrections at all, which makes the pair a controlled comparison at the same point. Time range is pinned to the captures — the survey-in occupations are five months later and live on the GNSS survey-in dashboard.",
+  "tags": ["telemetry", "phase-5", "requirement-1"],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Telemetry",
+      "tags": ["telemetry"],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": "",
+      "url": ""
+    }
+  ],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "2025-11-25T14:30:00Z", "to": "2025-11-27T03:00:00Z" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Rover error, RTK fixed (25 Nov)",
+      "description": "One-sigma latitude error from NMEA GST, averaged over the capture.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "lengthm", "decimals": 3, "color": { "mode": "fixed", "fixedColor": "green" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT avg(value) AS value\nFROM observation\nWHERE mission_id = 'rtk-rtk_25nov-rover' AND metric_key = 'position_error_lat';"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Rover error, standalone (27 Nov)",
+      "description": "Same receiver, same point, no corrections received.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["mean"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "lengthm", "decimals": 3, "color": { "mode": "fixed", "fixedColor": "orange" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT avg(value) AS value\nFROM observation\nWHERE mission_id = 'rtk-rtk_27nov-rover' AND metric_key = 'position_error_lat';"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Rover scatter, RTK fixed",
+      "description": "Total north-south spread of every fix in the 25 Nov capture.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "lengthm", "decimals": 3, "color": { "mode": "fixed", "fixedColor": "green" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT (max(latitude) - min(latitude)) * 111320 AS value\nFROM position\nWHERE mission_id = 'rtk-rtk_25nov-rover';"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Satellites in use, rover",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT value\nFROM observation\nWHERE mission_id = 'rtk-rtk_25nov-rover' AND metric_key = 'satellites_in_use'\nORDER BY event_time DESC LIMIT 1;"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "geomap",
+      "title": "Base and rover, Taveiro",
+      "description": "Two receivers about 19 m apart. The base is in fixed-position mode and re-emits its surveyed coordinate, so it plots as a single point and reports HDOP 99.99, NMEA's 'unavailable' sentinel, stored as null.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 12, "w": 12, "x": 0, "y": 5 },
+      "options": {
+        "view": { "id": "coords", "lat": 40.19771, "lon": -8.50989, "zoom": 19 },
+        "basemap": { "type": "osm-standard", "name": "OpenStreetMap", "config": {} },
+        "controls": { "showZoom": true, "showAttribution": true, "mouseWheelZoom": true, "showScale": true },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "Base",
+            "location": { "mode": "coords", "latitude": "latitude", "longitude": "longitude" },
+            "filterData": { "id": "byRefId", "options": "A" },
+            "config": {
+              "style": {
+                "size": { "fixed": 8 },
+                "color": { "fixed": "orange" },
+                "opacity": 0.8,
+                "symbol": { "mode": "fixed", "fixed": "img/icons/marker/circle.svg" }
+              },
+              "showLegend": true
+            },
+            "tooltip": true
+          },
+          {
+            "type": "markers",
+            "name": "Rover",
+            "location": { "mode": "coords", "latitude": "latitude", "longitude": "longitude" },
+            "filterData": { "id": "byRefId", "options": "B" },
+            "config": {
+              "style": {
+                "size": { "fixed": 4 },
+                "color": { "fixed": "green" },
+                "opacity": 0.5,
+                "symbol": { "mode": "fixed", "fixed": "img/icons/marker/circle.svg" }
+              },
+              "showLegend": true
+            },
+            "tooltip": true
+          }
+        ]
+      },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT latitude, longitude\nFROM position\nWHERE device_id = 'rtk-base' AND $__timeFilter(event_time);"
+        },
+        {
+          "refId": "B",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT latitude, longitude\nFROM position\nWHERE device_id = 'rtk-rover' AND $__timeFilter(event_time);"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Position error: RTK fixed against standalone",
+      "description": "Logarithmic axis: at a linear scale the RTK series sits on the zero line and disappears, because the two differ by about fifty times.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 12, "w": 12, "x": 12, "y": 5 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "lengthm",
+          "min": 0.004,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": false,
+            "scaleDistribution": { "type": "log", "log": 10 }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "rtk_fixed (25 Nov)" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "standalone (27 Nov)" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, value AS \"rtk_fixed (25 Nov)\"\nFROM observation\nWHERE mission_id = 'rtk-rtk_25nov-rover' AND metric_key = 'position_error_lat'\n  AND $__timeFilter(event_time)\nORDER BY 1;"
+        },
+        {
+          "refId": "B",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, value AS \"standalone (27 Nov)\"\nFROM observation\nWHERE mission_id = 'rtk-rtk_27nov-rover' AND metric_key = 'position_error_lat'\n  AND $__timeFilter(event_time)\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "HDOP, rover",
+      "description": "Dilution of precision. The base reports 99.99 (unavailable) and is stored as null, so only the rovers appear here.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 17 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT event_time AS time, mission_id AS metric, hdop\nFROM position\nWHERE device_id = 'rtk-rover' AND hdop IS NOT NULL AND $__timeFilter(event_time)\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "RTK captures",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 17 },
+      "options": { "showHeader": true },
+      "fieldConfig": { "defaults": { "custom": { "align": "auto" } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT m.mission_id,\n       count(p.*) AS fixes,\n       round(avg(p.hdop)::numeric, 2) AS avg_hdop,\n       mode() WITHIN GROUP (ORDER BY p.fix_quality) AS fix_quality,\n       round(((max(p.latitude) - min(p.latitude)) * 111320)::numeric, 3) AS spread_m\nFROM mission m\nJOIN position p ON p.mission_id = m.mission_id\nWHERE m.mission_id LIKE 'rtk-%'\nGROUP BY m.mission_id\nORDER BY m.mission_id;"
+        }
+      ]
+    }
+  ]
+}
