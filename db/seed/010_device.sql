@@ -27,6 +27,9 @@ INSERT INTO device (device_id, model, firmware_version) VALUES
      NULL),
     ('gnss-survey',
      'u-blox receiver logging UBX-NAV-SVIN survey-in records',
+     NULL),
+    ('synthetic-platform',
+     'SYNTHETIC. Not a real device. Carries the channels nothing measured: magnetometer, IMU, UV (DEC-18)',
      NULL)
 ON CONFLICT (device_id) DO UPDATE SET
     model            = EXCLUDED.model,

@@ -36,7 +36,14 @@ INSERT INTO sensor (device_id, sensor_id, model, manufacturer, mount_position, a
 
     ('rtk-base',      'gnss_receiver',  'unspecified u-blox receiver', 'u-blox', 'station',     '2025-10-01T00:00:00Z'),
     ('rtk-rover',     'gnss_receiver',  'unspecified u-blox receiver', 'u-blox', 'rover_pole',  '2025-10-01T00:00:00Z'),
-    ('gnss-survey',   'gnss_receiver',  'unspecified u-blox receiver', 'u-blox', 'station',     '2026-04-01T00:00:00Z')
+    ('gnss-survey',   'gnss_receiver',  'unspecified u-blox receiver', 'u-blox', 'station',     '2026-04-01T00:00:00Z'),
+
+-- Synthetic only. These part numbers are plausible choices for the job, but no
+-- such sensor was ever fitted: nothing in data/ measured a magnetic vector, an
+-- IMU waveform or a UV index (DEC-18).
+    ('synthetic-platform', 'mmc5983',   'MMC5983MA (synthetic)',  'MEMSIC',         'boom_tip',    '2025-06-01T00:00:00Z'),
+    ('synthetic-platform', 'icm42688',  'ICM-42688-P (synthetic)','TDK InvenSense', 'frame',       '2025-06-01T00:00:00Z'),
+    ('synthetic-platform', 'veml6075',  'VEML6075 (synthetic)',   'Vishay',         'upward_face', '2025-06-01T00:00:00Z')
 ON CONFLICT (device_id, sensor_id) DO UPDATE SET
     model          = EXCLUDED.model,
     manufacturer   = EXCLUDED.manufacturer,
