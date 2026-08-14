@@ -30,8 +30,8 @@ ON CONFLICT DO NOTHING
 INSERT_OBSERVATION = """
 INSERT INTO observation (
     event_time, mission_id, device_id, sensor_id, metric_key,
-    value, value_raw, vx, vy, vz, seq
-) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    value, value_raw, vx, vy, vz, quality, seq
+) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT DO NOTHING
 """
 
@@ -44,7 +44,9 @@ ON CONFLICT DO NOTHING
 
 
 class Sink(Protocol):
-    def open_mission(self, mission_id: str, name: str, started_at: datetime, description: str) -> None: ...
+    def open_mission(
+        self, mission_id: str, name: str, started_at: datetime, description: str, kind: str = "measured"
+    ) -> None: ...
     def write(self, batch: Batch) -> None: ...
     def close_mission(self, mission_id: str, ended_at: datetime) -> None: ...
     def close(self) -> None: ...
@@ -71,60 +73,68 @@ class PostgresSink:
         self.time_scale = time_scale
         self.rows_written = 0
 
-    def open_mission(self, mission_id: str, name: str, started_at: datetime, description: str) -> None:
+    def open_mission(
+        self,
+        mission_id: str,
+        name: str,
+        started_at: datetime,
+        description: str,
+        kind: str = "measured",
+    ) -> None:
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO mission (mission_id, name, started_at, description)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO mission (mission_id, name, started_at, description, kind)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (mission_id) DO NOTHING
                 """,
-                (mission_id, name, started_at, description),
+                (mission_id, name, started_at, description, kind),
             )
         self.connection.commit()
 
-    def write(self, batch: Batch) -> None:
+    def _position_row(self, batch: Batch) -> tuple:
         position = batch.position
-        with self.connection.cursor() as cursor:
-            cursor.execute(
-                INSERT_POSITION,
-                (
-                    batch.batch_time,
-                    batch.mission_id,
-                    batch.device_id,
-                    position.lat,
-                    position.lon,
-                    position.alt_m,
-                    position.speed_ms,
-                    position.heading_deg % 360.0,
-                    position.vertical_speed_ms,
-                    position.fix_quality,
-                    position.satellites,
-                    position.hdop,
-                    batch.seq,
-                ),
+        return (
+            batch.batch_time,
+            batch.mission_id,
+            batch.device_id,
+            position.lat,
+            position.lon,
+            position.alt_m,
+            position.speed_ms,
+            position.heading_deg % 360.0 if position.heading_deg is not None else None,
+            position.vertical_speed_ms,
+            position.fix_quality,
+            position.satellites,
+            position.hdop,
+            batch.seq,
+        )
+
+    def _observation_rows(self, batch: Batch) -> list[tuple]:
+        return [
+            (
+                batch.batch_time + timedelta(milliseconds=o.t_offset_ms * self.time_scale),
+                batch.mission_id,
+                batch.device_id,
+                o.sensor_id,
+                o.metric_key,
+                o.value,
+                o.value_raw,
+                o.vx,
+                o.vy,
+                o.vz,
+                o.quality,
+                batch.seq,
             )
+            for o in batch.observations
+        ]
+
+    def write(self, batch: Batch) -> None:
+        with self.connection.cursor() as cursor:
+            if batch.position is not None:
+                cursor.execute(INSERT_POSITION, self._position_row(batch))
             if batch.observations:
-                cursor.executemany(
-                    INSERT_OBSERVATION,
-                    [
-                        (
-                            batch.batch_time
-                            + timedelta(milliseconds=observation.t_offset_ms * self.time_scale),
-                            batch.mission_id,
-                            batch.device_id,
-                            observation.sensor_id,
-                            observation.metric_key,
-                            observation.value,
-                            observation.value_raw,
-                            observation.vx,
-                            observation.vy,
-                            observation.vz,
-                            batch.seq,
-                        )
-                        for observation in batch.observations
-                    ],
-                )
+                cursor.executemany(INSERT_OBSERVATION, self._observation_rows(batch))
             cursor.execute(
                 INSERT_BATCH,
                 (
@@ -139,6 +149,48 @@ class PostgresSink:
             )
         self.connection.commit()
         self.rows_written += batch.record_count
+
+    def write_many(self, batches: list[Batch], source: str, batch_seq: int) -> int:
+        """Write a whole file in one transaction, as a single ingest_batch.
+
+        The generator's unit of work is one instant; a file loader's is one
+        file. Recording an ingest_batch per row would bury the pipeline health
+        panel under hundreds of thousands of entries that all say the same
+        thing.
+        """
+        if not batches:
+            return 0
+
+        positions = [self._position_row(b) for b in batches if b.position is not None]
+        observations = [row for b in batches for row in self._observation_rows(b)]
+
+        # Count what the database actually accepted, not what was offered. With
+        # ON CONFLICT DO NOTHING the two differ on every re-run, and a loader
+        # that reports the rows it sent would claim to have written a million
+        # rows while inserting none.
+        inserted = 0
+        with self.connection.cursor() as cursor:
+            if positions:
+                cursor.executemany(INSERT_POSITION, positions)
+                inserted += max(cursor.rowcount, 0)
+            if observations:
+                cursor.executemany(INSERT_OBSERVATION, observations)
+                inserted += max(cursor.rowcount, 0)
+            cursor.execute(
+                INSERT_BATCH,
+                (
+                    batches[0].mission_id,
+                    batches[0].device_id,
+                    source,
+                    batch_seq,
+                    batches[0].batch_time,
+                    inserted,
+                    "ok",
+                ),
+            )
+        self.connection.commit()
+        self.rows_written += inserted
+        return inserted
 
     def close_mission(self, mission_id: str, ended_at: datetime) -> None:
         with self.connection.cursor() as cursor:

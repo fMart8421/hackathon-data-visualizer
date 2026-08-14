@@ -14,7 +14,25 @@ INSERT INTO sensor (device_id, sensor_id, model, manufacturer, mount_position, a
     ('balloon-01', 'mics4514',  'MiCS-4514',     'SGX Sensortech',  'intake_duct',     '2026-08-01T00:00:00Z'),
     ('balloon-01', 'ulpsm_o3',  'ULPSM-O3',      'SPEC Sensors',    'intake_duct',     '2026-08-01T00:00:00Z'),
     ('balloon-01', 'veml6075',  'VEML6075',      'Vishay',          'payload_top',     '2026-08-01T00:00:00Z'),
-    ('balloon-01', 'as3935',    'AS3935',        'ams',             'boom_mid',        '2026-08-01T00:00:00Z')
+    ('balloon-01', 'as3935',    'AS3935',        'ams',             'boom_mid',        '2026-08-01T00:00:00Z'),
+
+-- Real rigs. The MiCS-6814 is three separate sensing elements in one package,
+-- so it is modelled as three sensors: each channel has its own resistance and
+-- its own calibration, and collapsing them would make gas_sensor_resistance
+-- ambiguous.
+    ('arduino-uno-5v', 'mq4',           'MQ-4',       'Winsen',         'breadboard', '2026-05-01T00:00:00Z'),
+    ('arduino-uno-5v', 'mics5524',      'MiCS-5524',  'SGX Sensortech', 'breadboard', '2026-05-01T00:00:00Z'),
+    ('arduino-uno-5v', 'mics6814_co',   'MiCS-6814',  'SGX Sensortech', 'breadboard', '2026-05-01T00:00:00Z'),
+    ('arduino-uno-5v', 'mics6814_nh3',  'MiCS-6814',  'SGX Sensortech', 'breadboard', '2026-05-01T00:00:00Z'),
+    ('arduino-uno-5v', 'mics6814_no2',  'MiCS-6814',  'SGX Sensortech', 'breadboard', '2026-05-01T00:00:00Z'),
+
+    ('sps30-logger',  'sps30',          'SPS30',      'Sensirion',      'inlet',      '2025-05-01T00:00:00Z'),
+
+    ('akel-alcohol3', 'mics5524',       'MiCS-5524',  'SGX Sensortech', 'bench',      '2025-07-01T00:00:00Z'),
+    ('akel-alcohol3', 'th_probe',       'unspecified temperature and humidity probe', NULL, 'bench', '2025-07-01T00:00:00Z'),
+
+    ('akel-ch4',      'ch4_sensor',     'unspecified methane sensor', NULL,           'bench',      '2025-08-01T00:00:00Z'),
+    ('akel-ch4',      'th_probe',       'unspecified temperature and humidity probe', NULL, 'bench', '2025-08-01T00:00:00Z')
 ON CONFLICT (device_id, sensor_id) DO UPDATE SET
     model          = EXCLUDED.model,
     manufacturer   = EXCLUDED.manufacturer,

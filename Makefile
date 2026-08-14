@@ -6,7 +6,7 @@ SHELL   := /bin/sh
 COMPOSE := docker compose
 
 .DEFAULT_GOAL := help
-.PHONY: help env up down reset migrate psql status logs generate demo build export replay test
+.PHONY: help env up down reset migrate psql status logs generate demo build export replay test ingest ingest-dry
 
 help:
 	@echo "make up        start PostgreSQL and Grafana, apply migrations and seed"
@@ -16,6 +16,8 @@ help:
 	@echo "make psql      open a psql shell on the running database"
 	@echo "make status    container status"
 	@echo "make logs      follow logs"
+	@echo "make ingest    load the measured data in data/ into PostgreSQL"
+	@echo "make ingest-dry  parse and report without writing"
 	@echo "make generate  run the generator in real time, 150 min"
 	@echo "make demo      run the generator at 60x, 2.5 min"
 	@echo "make test      generator tests"
@@ -67,6 +69,15 @@ demo: env
 
 test:
 	$(COMPOSE) run --rm --entrypoint pytest generator
+	$(COMPOSE) run --rm --entrypoint pytest ingest /ingest/tests
+
+# --- Measured data ----------------------------------------------------------
+
+ingest: env
+	$(COMPOSE) run --rm ingest $(ARGS)
+
+ingest-dry:
+	$(COMPOSE) run --rm ingest --dry-run $(ARGS)
 
 build:
 	$(COMPOSE) build generator

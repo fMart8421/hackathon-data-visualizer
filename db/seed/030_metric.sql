@@ -30,9 +30,12 @@ INSERT INTO metric (metric_key, kind, canonical_unit, display_unit,
      0,       5000,    NULL,   1000,  'none',
      'Carbon dioxide. About 420 ppm at surface, decreasing with altitude.'),
 
-    ('no2_concentration',  'scalar',   'ppb',    'conppb',
-     0,       500,     NULL,   100,   'none',
-     'Nitrogen dioxide. Peaks in the urban boundary layer below 2 km.'),
+-- Changed from ppb to ppm on 2026-08-13: the MiCS-6814 reports ppm, and every
+-- other measured gas is in ppm. One unit per metric, no conversion on write
+-- (DEC-04).
+    ('no2_concentration',  'scalar',   'ppm',    'conppm',
+     0,       50,      NULL,   5,     'none',
+     'Nitrogen dioxide, MiCS-6814 oxidising channel.'),
 
     ('o3_concentration',   'scalar',   'ppb',    'conppb',
      0,       15000,   NULL,   200,   'none',
@@ -64,7 +67,73 @@ INSERT INTO metric (metric_key, kind, canonical_unit, display_unit,
 -- Discrete ------------------------------------------------------------------
     ('lightning_strike',   'event',    'count',  'none',
      NULL,    NULL,    NULL,   NULL,  'none',
-     'Lightning detection. Payload carries strike energy and estimated distance.')
+     'Lightning detection. Payload carries strike energy and estimated distance.'),
+
+-- Measured gases, from data/Volatiles, data/Alcohol and data/CH4 (DEC-17).
+-- value_raw holds the ADC count the board actually read, value holds the ppm
+-- the firmware derived from it (DEC-05).
+    ('ch4_concentration',  'scalar',   'ppm',    'conppm',
+     0,       10000,   NULL,   1000,  'none',
+     'Methane, MQ-4. Needs 48 h burn-in for accuracy, per the logger banner.'),
+
+    ('co_concentration',   'scalar',   'ppm',    'conppm',
+     0,       1000,    NULL,   50,    'none',
+     'Carbon monoxide. Measured by both the MiCS-5524 and the MiCS-6814 reducing channel; the two disagree because neither was calibrated against a clean-air reference.'),
+
+    ('nh3_concentration',  'scalar',   'ppm',    'conppm',
+     0,       500,     NULL,   25,    'none',
+     'Ammonia, MiCS-6814 NH3 channel.'),
+
+    ('ethanol_concentration', 'scalar', 'ppm',   'conppm',
+     0,       1000,    NULL,   100,   'none',
+     'Ethanol, MiCS-5524. The Alcohol 3 bench logs report this directly.'),
+
+    ('gas_sensor_resistance', 'scalar', 'ohm',   'ohm',
+     0,       20000000, NULL,  NULL,  'none',
+     'Sensing element resistance. The physical quantity a metal-oxide sensor actually produces, before any ppm conversion.'),
+
+-- Particulates, from data/Particles. The SPS30 logs are labelled ug/cm^3,
+-- which is wrong by a factor of a million: the part reports ug/m3 for mass and
+-- 1/cm3 for number concentration. Stored under the correct units.
+    ('pm1_0',              'scalar',   'ug/m3',  'conugm3',
+     0,       1000,    NULL,   50,    'none',
+     'Particulate matter up to 1.0 um, SPS30.'),
+
+    ('pm2_5',              'scalar',   'ug/m3',  'conugm3',
+     0,       1000,    NULL,   25,    'none',
+     'Particulate matter up to 2.5 um, SPS30. The fraction air quality limits are written against.'),
+
+    ('pm4_0',              'scalar',   'ug/m3',  'conugm3',
+     0,       1000,    NULL,   50,    'none',
+     'Particulate matter up to 4.0 um, SPS30.'),
+
+    ('pm10',               'scalar',   'ug/m3',  'conugm3',
+     0,       1000,    NULL,   50,    'none',
+     'Particulate matter up to 10 um, SPS30.'),
+
+    ('nc0_5',              'scalar',   '1/cm3',  'none',
+     0,       100000,  NULL,   NULL,  'none',
+     'Number concentration of particles above 0.5 um, SPS30.'),
+
+    ('nc1_0',              'scalar',   '1/cm3',  'none',
+     0,       100000,  NULL,   NULL,  'none',
+     'Number concentration of particles above 1.0 um, SPS30.'),
+
+    ('nc2_5',              'scalar',   '1/cm3',  'none',
+     0,       100000,  NULL,   NULL,  'none',
+     'Number concentration of particles above 2.5 um, SPS30.'),
+
+    ('nc4_0',              'scalar',   '1/cm3',  'none',
+     0,       100000,  NULL,   NULL,  'none',
+     'Number concentration of particles above 4.0 um, SPS30.'),
+
+    ('nc10',               'scalar',   '1/cm3',  'none',
+     0,       100000,  NULL,   NULL,  'none',
+     'Number concentration of particles above 10 um, SPS30.'),
+
+    ('typical_particle_size', 'scalar', 'um',    'lengthum',
+     0,       20,      NULL,   NULL,  'none',
+     'Typical particle size reported by the SPS30 alongside each measurement.')
 
 ON CONFLICT (metric_key) DO UPDATE SET
     kind           = EXCLUDED.kind,

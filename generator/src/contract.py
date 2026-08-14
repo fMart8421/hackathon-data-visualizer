@@ -19,24 +19,30 @@ from typing import Any
 
 @dataclass(frozen=True)
 class PositionFix:
+    # Only lat and lon are always known. The particle runs log a bare
+    # coordinate with no altitude, speed or satellite count, and inventing
+    # those would be inventing measurements.
     lat: float
     lon: float
-    alt_m: float
-    speed_ms: float
-    heading_deg: float
-    vertical_speed_ms: float
-    fix_quality: int
-    satellites: int
-    hdop: float
+    alt_m: float | None = None
+    speed_ms: float | None = None
+    heading_deg: float | None = None
+    vertical_speed_ms: float | None = None
+    fix_quality: int | None = None
+    satellites: int | None = None
+    hdop: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        def rounded(value: float | None, places: int) -> float | None:
+            return None if value is None else round(value, places)
+
         return {
-            "lat": round(self.lat, 6),
-            "lon": round(self.lon, 6),
-            "alt_m": round(self.alt_m, 1),
-            "speed_ms": round(self.speed_ms, 2),
-            "heading_deg": round(self.heading_deg, 1),
-            "vertical_speed_ms": round(self.vertical_speed_ms, 2),
+            "lat": rounded(self.lat, 6),
+            "lon": rounded(self.lon, 6),
+            "alt_m": rounded(self.alt_m, 1),
+            "speed_ms": rounded(self.speed_ms, 2),
+            "heading_deg": rounded(self.heading_deg, 1),
+            "vertical_speed_ms": rounded(self.vertical_speed_ms, 2),
             "fix_quality": self.fix_quality,
             "satellites": self.satellites,
             "hdop": self.hdop,
@@ -53,6 +59,10 @@ class ObservationRecord:
     vx: float | None = None
     vy: float | None = None
     vz: float | None = None
+    # 'suspect' when a reading falls outside the metric's plausible range.
+    # Several of the provided gas channels were never calibrated against clean
+    # air and report values that are physically impossible.
+    quality: str = "good"
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -64,6 +74,8 @@ class ObservationRecord:
             value = getattr(self, name)
             if value is not None:
                 payload[name] = value
+        if self.quality != "good":
+            payload["quality"] = self.quality
         return payload
 
 
@@ -75,7 +87,9 @@ class Batch:
     mission_id: str
     seq: int
     batch_time: datetime
-    position: PositionFix
+    # None for bench sessions: most of the provided data was recorded indoors
+    # with no GNSS at all, and only the _Coord particle runs carry a fix.
+    position: PositionFix | None = None
     observations: list[ObservationRecord] = field(default_factory=list)
     # Populated in phases 3 and 4. Present now so the shape never changes.
     waveforms: list[dict[str, Any]] = field(default_factory=list)
@@ -83,7 +97,8 @@ class Batch:
 
     @property
     def record_count(self) -> int:
-        return 1 + len(self.observations) + len(self.waveforms) + len(self.events)
+        positions = 1 if self.position is not None else 0
+        return positions + len(self.observations) + len(self.waveforms) + len(self.events)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -91,7 +106,7 @@ class Batch:
             "mission_id": self.mission_id,
             "seq": self.seq,
             "batch_time": self.batch_time.isoformat().replace("+00:00", "Z"),
-            "position": self.position.to_dict(),
+            "position": self.position.to_dict() if self.position is not None else None,
             "observations": [o.to_dict() for o in self.observations],
             "waveforms": list(self.waveforms),
             "events": list(self.events),

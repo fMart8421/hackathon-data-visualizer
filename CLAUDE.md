@@ -59,6 +59,8 @@ Full decisions with rationale: "Closed decisions" section (DEC-01 to DEC-12) in 
 | `make up` | start PostgreSQL and Grafana, apply migrations and seed |
 | `make down` | stop everything, keep the volume |
 | `make reset` | drop the volume and recreate from scratch |
+| `make ingest` | load the measured data in `data/` into PostgreSQL |
+| `make ingest-dry` | parse and report without writing |
 | `make generate` | run generator in real time |
 | `make demo` | run generator at 60x, for demonstration |
 | `make export FILE=flight.ndjson` | generate a full flight to file |
@@ -76,7 +78,7 @@ Follow the phase order in `docs/data-model.md`, "Roadmap" section. Each phase le
 
 1. Foundations: Compose, migrations, catalog seed. **Done.**
 2. Minimal generator: altitude, trajectory, three scalars, direct write. **Done.**
-3. Ingest layer: parsers for the chemistry files, catalog expansion, `mission.kind` migration.
+3. Ingest layer: parsers for the chemistry files, catalog expansion, `mission.kind` migration. **Done.**
 4. GNSS: precision files (ECEF to WGS84), the RTK CSV export, satellite skyplot.
 5. Dashboards for measured data: requirements 1, 2, 6, 7, 9, layout per the Claude Design link above.
 6. Synthetic supplement under DEC-18: magnetic vector, IMU waveforms, UV index, requirements 3, 4, 5, 8.
