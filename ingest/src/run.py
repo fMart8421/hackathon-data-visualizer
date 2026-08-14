@@ -18,6 +18,7 @@ from pathlib import Path
 
 import psycopg
 from cli import default_dsn
+from gnss import discover_gnss
 from loader import load, load_metric_rules
 from sinks import PostgresSink
 from sources import DEFAULT_RATE_HZ, discover
@@ -43,6 +44,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--dry-run", action="store_true", help="parse and report, write nothing")
     parser.add_argument("--limit", type=int, default=None, help="stop after this many samples per source")
+    parser.add_argument(
+        "--export-root",
+        default=None,
+        type=Path,
+        help="folder holding the MATLAB RTK export, defaults to <data-root>/export",
+    )
+    parser.add_argument("--skip-gnss", action="store_true", help="chemistry sources only")
     return parser.parse_args(argv)
 
 
@@ -54,6 +62,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     sources = discover(args.data_root, args.rate_hz)
+    if not args.skip_gnss:
+        sources += discover_gnss(args.data_root, args.export_root)
     if args.only:
         sources = [s for s in sources if any(fragment in s.mission_id for fragment in args.only)]
 

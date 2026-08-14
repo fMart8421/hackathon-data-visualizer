@@ -75,18 +75,19 @@ def _batch_from_sample(sample: Sample, source: Source, rules: dict[str, MetricRu
 
     position = None
     if sample.latitude is not None and sample.longitude is not None:
-        # The particle runs carry a fix and nothing else: no altitude, speed or
-        # satellite count. Those columns stay null rather than being invented.
+        # Whatever the source did not record stays null rather than being
+        # invented: the particle runs log a bare coordinate, the GNSS receivers
+        # log fix quality and satellite counts as well.
         position = PositionFix(
             lat=sample.latitude,
             lon=sample.longitude,
-            alt_m=None,
-            speed_ms=None,
-            heading_deg=None,
+            alt_m=sample.altitude_m,
+            speed_ms=sample.speed_ms,
+            heading_deg=sample.heading_deg,
             vertical_speed_ms=None,
-            fix_quality=None,
-            satellites=None,
-            hdop=None,
+            fix_quality=sample.fix_quality,
+            satellites=sample.satellites,
+            hdop=sample.hdop,
         )
 
     return Batch(

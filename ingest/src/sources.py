@@ -40,8 +40,16 @@ class Sample:
     index: int
     event_time: datetime
     readings: list[Reading]
+    # Position, where the source has one. The particle runs carry a bare
+    # coordinate; the GNSS sources fill in the rest.
     latitude: float | None = None
     longitude: float | None = None
+    altitude_m: float | None = None
+    speed_ms: float | None = None
+    heading_deg: float | None = None
+    fix_quality: int | None = None
+    satellites: int | None = None
+    hdop: float | None = None
 
 
 @dataclass

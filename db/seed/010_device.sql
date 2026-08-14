@@ -18,6 +18,15 @@ INSERT INTO device (device_id, model, firmware_version) VALUES
      NULL),
     ('akel-ch4',
      'Akel bench rig: methane sensor with a temperature and humidity probe. See OPEN-12',
+     NULL),
+    ('rtk-base',
+     'RTK base station at Taveiro, receiver 1 of the paired captures',
+     NULL),
+    ('rtk-rover',
+     'RTK rover at Taveiro, receiver 2, about 19 m from the base',
+     NULL),
+    ('gnss-survey',
+     'u-blox receiver logging UBX-NAV-SVIN survey-in records',
      NULL)
 ON CONFLICT (device_id) DO UPDATE SET
     model            = EXCLUDED.model,

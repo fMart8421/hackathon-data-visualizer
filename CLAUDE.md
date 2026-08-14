@@ -79,7 +79,7 @@ Follow the phase order in `docs/data-model.md`, "Roadmap" section. Each phase le
 1. Foundations: Compose, migrations, catalog seed. **Done.**
 2. Minimal generator: altitude, trajectory, three scalars, direct write. **Done.**
 3. Ingest layer: parsers for the chemistry files, catalog expansion, `mission.kind` migration. **Done.**
-4. GNSS: precision files (ECEF to WGS84), the RTK CSV export, satellite skyplot.
+4. GNSS: precision files (ECEF to WGS84), the RTK CSV export, satellite counts. **Done.**
 5. Dashboards for measured data: requirements 1, 2, 6, 7, 9, layout per the Claude Design link above.
 6. Synthetic supplement under DEC-18: magnetic vector, IMU waveforms, UV index, requirements 3, 4, 5, 8.
 7. Polish: file mode, replayer, aggregates, alerts, demo README.

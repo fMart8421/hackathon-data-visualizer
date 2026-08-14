@@ -32,7 +32,11 @@ INSERT INTO sensor (device_id, sensor_id, model, manufacturer, mount_position, a
     ('akel-alcohol3', 'th_probe',       'unspecified temperature and humidity probe', NULL, 'bench', '2025-07-01T00:00:00Z'),
 
     ('akel-ch4',      'ch4_sensor',     'unspecified methane sensor', NULL,           'bench',      '2025-08-01T00:00:00Z'),
-    ('akel-ch4',      'th_probe',       'unspecified temperature and humidity probe', NULL, 'bench', '2025-08-01T00:00:00Z')
+    ('akel-ch4',      'th_probe',       'unspecified temperature and humidity probe', NULL, 'bench', '2025-08-01T00:00:00Z'),
+
+    ('rtk-base',      'gnss_receiver',  'unspecified u-blox receiver', 'u-blox', 'station',     '2025-10-01T00:00:00Z'),
+    ('rtk-rover',     'gnss_receiver',  'unspecified u-blox receiver', 'u-blox', 'rover_pole',  '2025-10-01T00:00:00Z'),
+    ('gnss-survey',   'gnss_receiver',  'unspecified u-blox receiver', 'u-blox', 'station',     '2026-04-01T00:00:00Z')
 ON CONFLICT (device_id, sensor_id) DO UPDATE SET
     model          = EXCLUDED.model,
     manufacturer   = EXCLUDED.manufacturer,

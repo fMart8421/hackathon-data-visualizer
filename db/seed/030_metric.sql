@@ -133,7 +133,30 @@ INSERT INTO metric (metric_key, kind, canonical_unit, display_unit,
 
     ('typical_particle_size', 'scalar', 'um',    'lengthum',
      0,       20,      NULL,   NULL,  'none',
-     'Typical particle size reported by the SPS30 alongside each measurement.')
+     'Typical particle size reported by the SPS30 alongside each measurement.'),
+
+-- GNSS quality, from data/export (NMEA GGA and GST) and data/GNSSprecision
+-- (u-blox survey-in). Position itself lives in the position table, not here;
+-- these are the quantities that describe how good that position is.
+    ('satellites_in_use',   'scalar',   'count',  'none',
+     0,       60,      4,      NULL,  'none',
+     'Satellites used in the navigation solution, from NMEA GGA.'),
+
+    ('position_accuracy',   'scalar',   'm',      'lengthm',
+     0,       1000,    NULL,   1.0,   'none',
+     'u-blox survey-in mean accuracy. Converges from decimetres to millimetres as the survey runs.'),
+
+    ('position_error_lat',  'scalar',   'm',      'lengthm',
+     0,       100,     NULL,   1.0,   'none',
+     'One-sigma latitude error, NMEA GST. Centimetre-level under an RTK fix, metre-level without one.'),
+
+    ('position_error_lon',  'scalar',   'm',      'lengthm',
+     0,       100,     NULL,   1.0,   'none',
+     'One-sigma longitude error, NMEA GST.'),
+
+    ('position_error_alt',  'scalar',   'm',      'lengthm',
+     0,       100,     NULL,   2.0,   'none',
+     'One-sigma altitude error, NMEA GST.')
 
 ON CONFLICT (metric_key) DO UPDATE SET
     kind           = EXCLUDED.kind,

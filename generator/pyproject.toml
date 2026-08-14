@@ -7,7 +7,10 @@ requires-python = ">=3.12"
 # psycopg is the only runtime dependency: DEC-09 locks the stack to PostgreSQL
 # with no ORM, and something has to speak the wire protocol. The binary extra
 # avoids needing libpq and a compiler in the image.
-dependencies = ["psycopg[binary]>=3.2,<4"]
+# scipy is here for the ingest, not the generator: data/GNSSprecision holds
+# MATLAB v5 .mat files and scipy.io.loadmat is the only maintained reader for
+# them. Both components share this image, so the dependency is declared once.
+dependencies = ["psycopg[binary]>=3.2,<4", "scipy>=1.14,<2"]
 
 [project.optional-dependencies]
 test = ["pytest>=8,<9"]
