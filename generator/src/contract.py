@@ -80,6 +80,41 @@ class ObservationRecord:
 
 
 @dataclass(frozen=True)
+class WaveformRecord:
+    """One block of high-rate samples, never one row per sample (DEC-07).
+
+    Sample timing comes from first_sample_index and sample_rate_hz, not from
+    the clock (DEC-02).
+    """
+
+    sensor_id: str
+    metric_key: str
+    sample_rate_hz: float
+    first_sample_index: int
+    samples_x: list[float]
+    samples_y: list[float]
+    samples_z: list[float]
+    full_scale: float | None = None
+    t_offset_ms: int = 0
+
+    @property
+    def sample_count(self) -> int:
+        return len(self.samples_x)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "sensor_id": self.sensor_id,
+            "metric_key": self.metric_key,
+            "sample_rate_hz": self.sample_rate_hz,
+            "first_sample_index": self.first_sample_index,
+            "full_scale": self.full_scale,
+            "samples_x": self.samples_x,
+            "samples_y": self.samples_y,
+            "samples_z": self.samples_z,
+        }
+
+
+@dataclass(frozen=True)
 class Batch:
     """One instant of the flight: a fix plus everything measured around it."""
 
@@ -91,8 +126,8 @@ class Batch:
     # with no GNSS at all, and only the _Coord particle runs carry a fix.
     position: PositionFix | None = None
     observations: list[ObservationRecord] = field(default_factory=list)
-    # Populated in phases 3 and 4. Present now so the shape never changes.
-    waveforms: list[dict[str, Any]] = field(default_factory=list)
+    waveforms: list[WaveformRecord] = field(default_factory=list)
+    # Events remain unused: nothing in the provided data records one.
     events: list[dict[str, Any]] = field(default_factory=list)
 
     @property
@@ -108,7 +143,7 @@ class Batch:
             "batch_time": self.batch_time.isoformat().replace("+00:00", "Z"),
             "position": self.position.to_dict() if self.position is not None else None,
             "observations": [o.to_dict() for o in self.observations],
-            "waveforms": list(self.waveforms),
+            "waveforms": [w.to_dict() for w in self.waveforms],
             "events": list(self.events),
         }
 

@@ -35,6 +35,15 @@ INSERT INTO observation (
 ON CONFLICT DO NOTHING
 """
 
+INSERT_WAVEFORM = """
+INSERT INTO waveform_block (
+    block_start_time, mission_id, device_id, sensor_id, metric_key,
+    sample_rate_hz, sample_count, full_scale,
+    samples_x, samples_y, samples_z, first_sample_index
+) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+ON CONFLICT DO NOTHING
+"""
+
 INSERT_BATCH = """
 INSERT INTO ingest_batch (
     mission_id, device_id, source, seq, batch_time, record_count, status
@@ -129,12 +138,33 @@ class PostgresSink:
             for o in batch.observations
         ]
 
+    def _waveform_rows(self, batch: Batch) -> list[tuple]:
+        return [
+            (
+                batch.batch_time + timedelta(milliseconds=w.t_offset_ms * self.time_scale),
+                batch.mission_id,
+                batch.device_id,
+                w.sensor_id,
+                w.metric_key,
+                w.sample_rate_hz,
+                w.sample_count,
+                w.full_scale,
+                w.samples_x,
+                w.samples_y,
+                w.samples_z,
+                w.first_sample_index,
+            )
+            for w in batch.waveforms
+        ]
+
     def write(self, batch: Batch) -> None:
         with self.connection.cursor() as cursor:
             if batch.position is not None:
                 cursor.execute(INSERT_POSITION, self._position_row(batch))
             if batch.observations:
                 cursor.executemany(INSERT_OBSERVATION, self._observation_rows(batch))
+            if batch.waveforms:
+                cursor.executemany(INSERT_WAVEFORM, self._waveform_rows(batch))
             cursor.execute(
                 INSERT_BATCH,
                 (
@@ -163,6 +193,7 @@ class PostgresSink:
 
         positions = [self._position_row(b) for b in batches if b.position is not None]
         observations = [row for b in batches for row in self._observation_rows(b)]
+        waveforms = [row for b in batches for row in self._waveform_rows(b)]
 
         # Count what the database actually accepted, not what was offered. With
         # ON CONFLICT DO NOTHING the two differ on every re-run, and a loader
@@ -175,6 +206,9 @@ class PostgresSink:
                 inserted += max(cursor.rowcount, 0)
             if observations:
                 cursor.executemany(INSERT_OBSERVATION, observations)
+                inserted += max(cursor.rowcount, 0)
+            if waveforms:
+                cursor.executemany(INSERT_WAVEFORM, waveforms)
                 inserted += max(cursor.rowcount, 0)
             cursor.execute(
                 INSERT_BATCH,
