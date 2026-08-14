@@ -27,7 +27,9 @@ Don't add new dependencies without a written justification in that document firs
 - **The `metric` catalog is the source of truth.** Dashboard variables and repeated panels query that table. Don't hardcode metric lists in panel queries.
 - **Waveform stored in blocks, never sample by sample.** See `waveform_block` in the data model. Sample-by-sample at 100 Hz or higher blows up volume for no reason.
 - **Raw and calibrated, always both.** `value_raw` and `value` in every observation.
-- **Dashboards as code.** JSON versioned in `grafana/dashboards/`, loaded via provisioning at startup. Changes made in the Grafana UI get exported and committed; nothing lives only in a local instance.
+- **Dashboards as code.** JSON versioned in `grafana/dashboards/`, loaded via provisioning at startup. Changes made in the Grafana UI get exported and committed; nothing lives only in a local instance. Write the files without a BOM: PowerShell's `Set-Content -Encoding UTF8` adds one and Grafana refuses the file, while the previously-loaded version keeps rendering, so the failure is silent.
+- **A dashboard is not verified until it has been looked at.** Panel SQL that returns correct rows still hides variable-interpolation errors, unresolved unit ids, geomap layers bound to the wrong query, and series drawn off the edge of an axis. Check `docker compose logs grafana` for provisioning errors too.
+- **One dashboard per capture epoch.** The time range is dashboard-wide, and the captures are months apart; mixing them compresses every panel into an unreadable spike.
 - **A new sensor is a catalog row**, never a schema or panel change.
 
 Full decisions with rationale: "Closed decisions" section (DEC-01 to DEC-12) in `docs/data-model.md`.
@@ -80,7 +82,7 @@ Follow the phase order in `docs/data-model.md`, "Roadmap" section. Each phase le
 2. Minimal generator: altitude, trajectory, three scalars, direct write. **Done.**
 3. Ingest layer: parsers for the chemistry files, catalog expansion, `mission.kind` migration. **Done.**
 4. GNSS: precision files (ECEF to WGS84), the RTK CSV export, satellite counts. **Done.**
-5. Dashboards for measured data: requirements 1, 2, 6, 7, 9, layout per the Claude Design link above.
+5. Dashboards for measured data: requirements 1, 2, 6, 7, 9. **Done** — `gnss-rtk`, `gnss-survey`, `volatiles`, `particulates`, `weather`, `metric-explorer`. (The Claude Design link is blocked by the browser's navigation policy, so layout follows the acceptance table instead — see OPEN-14.)
 6. Synthetic supplement under DEC-18: magnetic vector, IMU waveforms, UV index, requirements 3, 4, 5, 8.
 7. Polish: file mode, replayer, aggregates, alerts, demo README.
 
