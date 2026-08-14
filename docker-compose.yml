@@ -89,6 +89,24 @@ services:
       # Source is mounted, so a code change needs no rebuild.
       - ./generator:/app
 
+  # Writes the synthetic supplement (DEC-18): the four channels nothing in
+  # data/ measured. Same image and same sink as everything else, so a
+  # generated row takes the identical path into the database.
+  supplement:
+    build: ./generator
+    image: telemetry-generator
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TELEMETRY_DSN: postgresql://${POSTGRES_USER:-telemetry}:${POSTGRES_PASSWORD:-telemetry}@db:5432/${POSTGRES_DB:-telemetry}
+      PYTHONPATH: /app/src
+      TZ: UTC
+    volumes:
+      - ./generator:/app
+    entrypoint: ["python", "-m", "supplement_cli"]
+
   # Loads the provided measurements (DEC-17). Shares the generator's image and
   # its contract and sink, so a file-fed row takes exactly the same path into
   # the database as a generated one.
