@@ -88,6 +88,8 @@ services:
     volumes:
       # Source is mounted, so a code change needs no rebuild.
       - ./generator:/app
+      # File mode writes here: make export FILE=flight.ndjson (DEC-20).
+      - ./exports:/exports
 
   # Writes the synthetic supplement (DEC-18): the four channels nothing in
   # data/ measured. Same image and same sink as everything else, so a
@@ -106,6 +108,26 @@ services:
     volumes:
       - ./generator:/app
     entrypoint: ["python", "-m", "supplement_cli"]
+
+  # Reads an NDJSON export back into the database at the pace of its own
+  # timestamps (DEC-20). Same image, same contract and same sink as the
+  # generator, so a replayed row takes the identical path in.
+  replayer:
+    build: ./generator
+    image: telemetry-generator
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TELEMETRY_DSN: postgresql://${POSTGRES_USER:-telemetry}:${POSTGRES_PASSWORD:-telemetry}@db:5432/${POSTGRES_DB:-telemetry}
+      PYTHONPATH: /app/src:/replayer/src
+      TZ: UTC
+    volumes:
+      - ./generator:/app
+      - ./replayer:/replayer
+      - ./exports:/exports
+    entrypoint: ["python", "-m", "replay"]
 
   # Loads the provided measurements (DEC-17). Shares the generator's image and
   # its contract and sink, so a file-fed row takes exactly the same path into

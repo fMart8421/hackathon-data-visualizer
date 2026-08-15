@@ -1,0 +1,247 @@
+# Alert rules, provisioned at startup like everything else (DEC-10, OPEN-06).
+#
+# Three rules, and between them they cover the two things that can go wrong in
+# a demo: a reading that leaves its plausible band, and a pipeline that stops
+# delivering.
+#
+# The first rule takes its thresholds from the metric catalog rather than from
+# this file, which is the same rule the dashboards follow: a new sensor is a
+# catalog row, never an edit here. Setting warn_high on a metric arms an alert
+# for it; clearing it disarms it. No rule JSON changes either way.
+#
+# Every rule is written so that "nothing is running" is not an alert:
+# noDataState is OK, and the pipeline rules only look at missions that are
+# still open. An alert that screams whenever the demo machine is idle is an
+# alert everyone learns to ignore.
+#
+# Every query returns exactly one series, grouped on a constant text column,
+# and this is not decoration. Grafana's PostgreSQL datasource turns a string
+# column into a *series name*, not into a label, and alerting only reads
+# labels. A query grouped by metric_key or mission_id therefore hands the
+# evaluator N frames that all carry the same empty label set, and the rule
+# dies with "frame cannot uniquely be identified by its labels: has duplicate
+# results". Found by arming two metrics to breach at once; with one breach it
+# looks like it works. The constant column also keeps an idle machine
+# returning zero rows instead of one row with a null timestamp, which fails
+# differently ("input has null time values").
+#
+# The cost is that an alert says what happened but not to which metric or
+# which mission. That detail is one panel away on the Pipeline health
+# dashboard, and each rule's description says where to look.
+#
+# Nothing is delivered anywhere: the notification policy in notifications.yml
+# mutes every route. Alert state is for the screen, not for someone's inbox.
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: readings
+    folder: Telemetry
+    interval: 1m
+    rules:
+      - uid: catalog-warning-band
+        title: Reading outside the catalog's warning band
+        condition: C
+        for: 0s
+        annotations:
+          summary: 'A reading in the last 10 minutes left the band declared in the metric catalog'
+          description: >-
+            The value is how many distinct metrics are outside warn_low/warn_high; which
+            ones is on the Pipeline health dashboard, in the metric catalog panel. The
+            thresholds come from the metric table, not from this rule: UPDATE metric SET
+            warn_high = ... arms or disarms an alert for a quantity without touching any
+            rule, which is the same principle the dashboards follow.
+        labels:
+          severity: warning
+          source: catalog
+        isPaused: false
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: telemetry-postgres
+            model:
+              refId: A
+              datasource:
+                type: grafana-postgresql-datasource
+                uid: telemetry-postgres
+              format: time_series
+              rawQuery: true
+              editorMode: code
+              rawSql: |
+                SELECT max(o.event_time)                    AS time,
+                       'catalog'::text                      AS series,
+                       count(DISTINCT o.metric_key)::float8 AS metrics_outside_band
+                FROM observation o
+                JOIN metric m ON m.metric_key = o.metric_key
+                WHERE $__timeFilter(o.event_time)
+                  AND o.quality = 'good'
+                  AND o.value IS NOT NULL
+                  AND ((m.warn_high IS NOT NULL AND o.value > m.warn_high)
+                    OR (m.warn_low  IS NOT NULL AND o.value < m.warn_low))
+                GROUP BY 2;
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              datasource:
+                type: __expr__
+                uid: __expr__
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [0]
+              datasource:
+                type: __expr__
+                uid: __expr__
+
+  - orgId: 1
+    name: pipeline
+    folder: Telemetry
+    interval: 30s
+    rules:
+      - uid: ingest-lag
+        title: End-to-end ingest lag above 5 s
+        condition: C
+        for: 0s
+        annotations:
+          summary: 'A live batch took more than 5 s to reach the database'
+          description: >-
+            ingest_batch.received_at minus batch_time, over the direct and replay paths
+            only; file loads are historical and their lag means nothing. Normal is about
+            1 ms, worst measured 30 ms, so this firing means the writer or the database
+            is genuinely struggling.
+        labels:
+          severity: warning
+          source: pipeline
+        isPaused: false
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: telemetry-postgres
+            model:
+              refId: A
+              datasource:
+                type: grafana-postgresql-datasource
+                uid: telemetry-postgres
+              format: time_series
+              rawQuery: true
+              editorMode: code
+              rawSql: |
+                SELECT max(received_at)                                  AS time,
+                       'live pipeline'::text                             AS series,
+                       max(extract(epoch FROM received_at - batch_time)) AS lag_seconds
+                FROM ingest_batch
+                WHERE $__timeFilter(received_at)
+                  AND source IN ('direct', 'replay')
+                GROUP BY 2;
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              datasource:
+                type: __expr__
+                uid: __expr__
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [5]
+              datasource:
+                type: __expr__
+                uid: __expr__
+
+      - uid: live-stream-stalled
+        title: Live stream stopped mid-mission
+        condition: C
+        for: 0s
+        annotations:
+          summary: 'A mission is still open but nothing has been written to it for 30 s'
+          description: >-
+            The mission has no ended_at, so whatever was writing it did not finish: the
+            generator or the replayer died, or the database stopped accepting. A run that
+            completes normally closes its mission and never appears here. The value is the
+            longest silence in seconds; which mission is on the Pipeline health dashboard,
+            in the recent batches panel.
+        labels:
+          severity: critical
+          source: pipeline
+        isPaused: false
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: telemetry-postgres
+            model:
+              refId: A
+              datasource:
+                type: grafana-postgresql-datasource
+                uid: telemetry-postgres
+              format: time_series
+              rawQuery: true
+              editorMode: code
+              rawSql: |
+                SELECT now()                AS time,
+                       'live stream'::text  AS series,
+                       max(silent_seconds)  AS silent_seconds
+                FROM (
+                  SELECT extract(epoch FROM now() - max(b.received_at)) AS silent_seconds
+                  FROM ingest_batch b
+                  JOIN mission m ON m.mission_id = b.mission_id
+                  WHERE $__timeFilter(b.received_at)
+                    AND b.source IN ('direct', 'replay')
+                    AND m.ended_at IS NULL
+                  GROUP BY b.mission_id
+                ) open_missions
+                GROUP BY 2;
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+              datasource:
+                type: __expr__
+                uid: __expr__
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [30]
+              datasource:
+                type: __expr__
+                uid: __expr__

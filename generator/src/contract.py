@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -48,6 +48,20 @@ class PositionFix:
             "hdop": self.hdop,
         }
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "PositionFix":
+        return cls(
+            lat=payload["lat"],
+            lon=payload["lon"],
+            alt_m=payload.get("alt_m"),
+            speed_ms=payload.get("speed_ms"),
+            heading_deg=payload.get("heading_deg"),
+            vertical_speed_ms=payload.get("vertical_speed_ms"),
+            fix_quality=payload.get("fix_quality"),
+            satellites=payload.get("satellites"),
+            hdop=payload.get("hdop"),
+        )
+
 
 @dataclass(frozen=True)
 class ObservationRecord:
@@ -77,6 +91,20 @@ class ObservationRecord:
         if self.quality != "good":
             payload["quality"] = self.quality
         return payload
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "ObservationRecord":
+        return cls(
+            sensor_id=payload["sensor_id"],
+            metric_key=payload["metric_key"],
+            t_offset_ms=payload.get("t_offset_ms", 0),
+            value=payload.get("value"),
+            value_raw=payload.get("value_raw"),
+            vx=payload.get("vx"),
+            vy=payload.get("vy"),
+            vz=payload.get("vz"),
+            quality=payload.get("quality", "good"),
+        )
 
 
 @dataclass(frozen=True)
@@ -112,6 +140,20 @@ class WaveformRecord:
             "samples_y": self.samples_y,
             "samples_z": self.samples_z,
         }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "WaveformRecord":
+        return cls(
+            sensor_id=payload["sensor_id"],
+            metric_key=payload["metric_key"],
+            sample_rate_hz=payload["sample_rate_hz"],
+            first_sample_index=payload["first_sample_index"],
+            samples_x=list(payload["samples_x"]),
+            samples_y=list(payload["samples_y"]),
+            samples_z=list(payload["samples_z"]),
+            full_scale=payload.get("full_scale"),
+            t_offset_ms=payload.get("t_offset_ms", 0),
+        )
 
 
 @dataclass(frozen=True)
@@ -149,3 +191,33 @@ class Batch:
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), separators=(",", ":"))
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "Batch":
+        """Rebuild a batch from its wire form.
+
+        The replayer's half of file mode. to_dict and this must stay exact
+        inverses of each other, or a replayed flight stops being the flight
+        that was exported (DEC-20).
+        """
+        position = payload.get("position")
+        return cls(
+            device_id=payload["device_id"],
+            mission_id=payload["mission_id"],
+            seq=payload["seq"],
+            batch_time=parse_time(payload["batch_time"]),
+            position=PositionFix.from_dict(position) if position else None,
+            observations=[ObservationRecord.from_dict(o) for o in payload.get("observations", [])],
+            waveforms=[WaveformRecord.from_dict(w) for w in payload.get("waveforms", [])],
+            events=list(payload.get("events", [])),
+        )
+
+    @classmethod
+    def from_json(cls, line: str) -> "Batch":
+        return cls.from_dict(json.loads(line))
+
+
+def parse_time(text: str) -> datetime:
+    """ISO-8601 as written by to_dict, always UTC (DEC-01)."""
+    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)

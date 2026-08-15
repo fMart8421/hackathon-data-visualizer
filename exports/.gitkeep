@@ -1,0 +1,3 @@
+NDJSON exports land here: make export FILE=flight.ndjson.
+Mounted into the generator and replayer containers as /exports.
+The files themselves are gitignored; they are reproducible from a seed.

@@ -1,8 +1,9 @@
 """Where batches go.
 
-Phase 2 implements the direct PostgreSQL sink. The NDJSON sink and the
-replayer are phase 6; the interface is here so adding them changes this file
-and nothing else.
+Two sinks, one interface. PostgresSink writes to the database as the flight
+happens; NdjsonSink writes the same batches to a file for the replayer to
+insert later (DEC-20). Adding a third destination changes this file and
+nothing else.
 
 Every insert carries ON CONFLICT DO NOTHING against the natural keys from
 DEC-03, so re-running a mission, or restarting mid-flight, never duplicates a
@@ -12,7 +13,10 @@ actually landed, not when the generator thought it did.
 
 from __future__ import annotations
 
+import json
+import time
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Protocol
 
 import psycopg
@@ -68,18 +72,21 @@ class PostgresSink:
     never catches a fix without its observations.
     """
 
-    source = "direct"
-
-    def __init__(self, dsn: str, time_scale: float = 1.0) -> None:
+    def __init__(self, dsn: str, time_scale: float = 1.0, source: str = "direct") -> None:
         """time_scale converts flight time to wall clock: 1/speed.
 
         t_offset_ms in the contract is an offset in *flight* time, the real gap
         between reading two registers. When the flight is accelerated the
         offsets have to compress with everything else, or a batch's readings
         land after the next batch's fix.
+
+        source is what lands in ingest_batch.source: 'direct' for the
+        generator, 'replay' for the replayer. The health dashboard tells the
+        two paths apart by it.
         """
         self.connection = psycopg.connect(dsn, autocommit=False)
         self.time_scale = time_scale
+        self.source = source
         self.rows_written = 0
 
     def open_mission(
@@ -236,3 +243,114 @@ class PostgresSink:
 
     def close(self) -> None:
         self.connection.close()
+
+
+class NdjsonSink:
+    """File mode: one JSON object per line, no database involved.
+
+    Line 1 is a mission header, `{"mission": {...}}`. Every line after it is a
+    Batch exactly as documented under "Data contract" in docs/data-model.md.
+    The two are told apart by the top-level "mission" key, so the batch
+    contract itself needed no extra field (DEC-20).
+
+    Nothing is scaled here: batch_time advances at the flight's own pace and
+    t_offset_ms stays in flight time. How fast the flight is re-played, and
+    when it is anchored to, are the replayer's decisions, not the file's.
+    """
+
+    source = "export"
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        # newline="" so the file is byte-identical on Windows and Linux: the
+        # replayer reads it line by line and a stray CR is not JSON.
+        self.handle = self.path.open("w", encoding="utf-8", newline="")
+        self.rows_written = 0
+        self.batches_written = 0
+
+    def open_mission(
+        self,
+        mission_id: str,
+        name: str,
+        started_at: datetime,
+        description: str,
+        kind: str = "measured",
+    ) -> None:
+        header = {
+            "mission": {
+                "mission_id": mission_id,
+                "name": name,
+                "started_at": started_at.isoformat().replace("+00:00", "Z"),
+                "description": description,
+                "kind": kind,
+            }
+        }
+        self._writeline(json.dumps(header, separators=(",", ":")))
+
+    def write(self, batch: Batch) -> None:
+        self._writeline(batch.to_json())
+        self.rows_written += batch.record_count
+        self.batches_written += 1
+
+    def close_mission(self, mission_id: str, ended_at: datetime) -> None:
+        """Deliberately not written.
+
+        A replay re-anchors the flight to the moment it is replayed, so the
+        end of the mission is whenever that replay finishes. Recording an
+        ended_at here would be recording the export's clock, which nothing
+        downstream should trust.
+        """
+
+    def _writeline(self, line: str) -> None:
+        self.handle.write(line + "\n")
+
+    def close(self) -> None:
+        self.handle.close()
+
+
+def refresh_aggregates(dsn: str) -> float:
+    """Bring the materialised rollup level with the base tables (migration 005).
+
+    CONCURRENTLY, on its own autocommit connection: REFRESH ... CONCURRENTLY
+    cannot run inside a transaction block, and must not lock out a dashboard
+    that is reading the rollup while a load finishes. Returns seconds taken.
+    """
+    started = time.monotonic()
+    with psycopg.connect(dsn, autocommit=True) as connection:
+        connection.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY observation_1min")
+    return time.monotonic() - started
+
+
+def read_ndjson(path: str | Path):
+    """Yield the mission header, then every batch, from a file mode export.
+
+    Returns `(header, batches)`: the header is None for a file that has none,
+    which is what a hand-assembled file looks like.
+    """
+    handle = Path(path).open("r", encoding="utf-8")
+    header: dict | None = None
+    try:
+        first = handle.readline()
+        if not first.strip():
+            return None, iter(())
+        payload = json.loads(first)
+        if "mission" in payload:
+            header = payload["mission"]
+            leading: list[Batch] = []
+        else:
+            leading = [Batch.from_dict(payload)]
+    except Exception:
+        handle.close()
+        raise
+
+    def batches():
+        try:
+            yield from leading
+            for line in handle:
+                if line.strip():
+                    yield Batch.from_json(line)
+        finally:
+            handle.close()
+
+    return header, batches()

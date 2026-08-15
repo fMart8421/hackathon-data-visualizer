@@ -30,7 +30,9 @@ Don't add new dependencies without a written justification in that document firs
 - **Dashboards as code.** JSON versioned in `grafana/dashboards/`, loaded via provisioning at startup. Changes made in the Grafana UI get exported and committed; nothing lives only in a local instance. Write the files without a BOM: PowerShell's `Set-Content -Encoding UTF8` adds one and Grafana refuses the file, while the previously-loaded version keeps rendering, so the failure is silent.
 - **A dashboard is not verified until it has been looked at.** Panel SQL that returns correct rows still hides variable-interpolation errors, unresolved unit ids, geomap layers bound to the wrong query, and series drawn off the edge of an axis. Check `docker compose logs grafana` for provisioning errors too.
 - **One dashboard per capture epoch.** The time range is dashboard-wide, and the captures are months apart; mixing them compresses every panel into an unreadable spike.
-- **A new sensor is a catalog row**, never a schema or panel change.
+- **A new sensor is a catalog row**, never a schema or panel change. So is a new alert threshold: `metric.warn_low` and `warn_high` are what the alert rules read (DEC-22).
+- **Live panels read the base tables.** `observation_1min` is materialized (DEC-21) and only as current as the last `make refresh`, which the loaders run themselves. Pointing a live panel at it would show a series that stops moving.
+- **An alert query returns exactly one series.** Grafana's PostgreSQL datasource turns a string column into a series name rather than a label, so a query grouped by `metric_key` or `mission_id` dies with "frame cannot uniquely be identified by its labels" the moment two rows come back. Group on a constant, and never write a bare aggregate: with nothing running it returns one null-timestamped row and errors instead of reporting no data.
 
 Full decisions with rationale: "Closed decisions" section (DEC-01 to DEC-12) in `docs/data-model.md`.
 
@@ -39,6 +41,8 @@ Full decisions with rationale: "Closed decisions" section (DEC-01 to DEC-12) in 
 ```
 .
 ├── CLAUDE.md
+├── README.md                   running it, and the five-minute demo
+├── EXPLAINME.md                what the data is, measured against generated
 ├── docs/data-model.md          data model, generator, roadmap, acceptance criteria
 ├── docker-compose.yml
 ├── db/migrations/               numbered SQL
@@ -47,10 +51,12 @@ Full decisions with rationale: "Closed decisions" section (DEC-01 to DEC-12) in 
 ├── generator/src/                flight.py, sensors.py, contract.py, sinks.py, cli.py
 ├── ingest/                       parsers per provided format (phase 3)
 │   └── matlab/export_rtk.m       run in MATLAB to unlock the RTK captures
-├── replayer/src/replay.py
+├── replayer/src/replay.py        NDJSON back in, at the file's own pace
+├── exports/                      NDJSON flights, gitignored
 └── grafana/
     ├── provisioning/datasources/
     ├── provisioning/dashboards/
+    ├── provisioning/alerting/    rules, and the notification policy that mutes them
     └── dashboards/               one JSON per dashboard
 ```
 
@@ -63,11 +69,13 @@ Full decisions with rationale: "Closed decisions" section (DEC-01 to DEC-12) in 
 | `make reset` | drop the volume and recreate from scratch |
 | `make ingest` | load the measured data in `data/` into PostgreSQL |
 | `make ingest-dry` | parse and report without writing |
+| `make supplement` | generate the synthetic channels nothing measured (DEC-18) |
 | `make generate` | run generator in real time |
 | `make demo` | run generator at 60x, for demonstration |
-| `make export FILE=flight.ndjson` | generate a full flight to file |
-| `make replay FILE=flight.ndjson` | replay a file into the database |
-| `make test` | generator tests |
+| `make export FILE=flight.ndjson` | generate a full flight into `exports/` (DEC-20) |
+| `make replay FILE=flight.ndjson` | replay it, re-anchored to now under a fresh mission id |
+| `make refresh` | rebuild the `observation_1min` rollup (DEC-21) |
+| `make test` | generator, ingest and replayer tests |
 | `make build` | rebuild the generator image |
 
 The generator runs as a Compose one-off (DEC-15), so no Python is needed on the host. Pass extra flags with `ARGS`, e.g. `make demo ARGS="--duration-min 20"`.
@@ -83,13 +91,15 @@ Follow the phase order in `docs/data-model.md`, "Roadmap" section. Each phase le
 3. Ingest layer: parsers for the chemistry files, catalog expansion, `mission.kind` migration. **Done.**
 4. GNSS: precision files (ECEF to WGS84), the RTK CSV export, satellite counts. **Done.**
 5. Dashboards for measured data: requirements 1, 2, 6, 7, 9. **Done** — `gnss-rtk`, `gnss-survey`, `volatiles`, `particulates`, `weather`, `metric-explorer`. (The Claude Design link is blocked by the browser's navigation policy, so layout follows the acceptance table instead — see OPEN-14.)
-6. Synthetic supplement under DEC-18: magnetic vector, IMU waveforms, UV index, requirements 3, 4, 5, 8.
-7. Polish: file mode, replayer, aggregates, alerts, demo README.
+6. Synthetic supplement under DEC-18: magnetic vector, IMU waveforms, UV index, requirements 3, 4, 5, 8. **Done** — `make supplement`, dashboards `magnetometer`, `imu`, `uv-index`.
+7. Polish: file mode, replayer, aggregates, alerts, demo README. **Done** — `--sink ndjson` and `make replay` (DEC-20), `observation_1min` materialized (DEC-21), three provisioned alert rules (DEC-22), the `Pipeline health` dashboard, `README.md` and `EXPLAINME.md`.
+
+The roadmap is complete. New work is a change to a finished system, not the next phase: put the reasoning in `docs/data-model.md` before writing it, as every phase did.
 
 Before marking a phase done, check it against the "Acceptance criteria" table in `docs/data-model.md`.
 
 ## Still open
 
-Check the "Open questions" table in `docs/data-model.md` before deciding on your own: real IMU sample rate (OPEN-03), retention policy between demos (OPEN-04), single vs multiple devices at once (OPEN-05), whether alerts are in scope (OPEN-06), whether TimescaleDB is needed (OPEN-08). If a task depends on one of these, ask instead of assuming.
+Check the "Open questions" table in `docs/data-model.md` before deciding on your own: real IMU sample rate (OPEN-03), single vs multiple devices at once (OPEN-05), and the capture date for `RTK_BaseRover` (OPEN-13), which cannot be answered here at all — it needs whoever ran the capture. If a task depends on one of these, ask instead of assuming.
 
-Opened when the real data arrived: the RTK export from MATLAB (OPEN-09), the time base for the sources that have no timestamps (OPEN-10), whether the evaluators accept synthetic supplementation at all (OPEN-11), and what `CH4/` actually measures given its contradictory header (OPEN-12). OPEN-12 in particular must not be guessed: ingesting it under the wrong metric key would be a real error.
+Closed in phase 7: alerts are in scope and catalog-driven (OPEN-06), TimescaleDB is not needed and the measurements are recorded (OPEN-08), and synthetic supplementation is accepted by the evaluators (OPEN-11). Accepted does not loosen DEC-18: generated data stays labelled everywhere it appears.

@@ -30,7 +30,7 @@ import psycopg
 from cli import default_dsn
 from contract import Batch, ObservationRecord, PositionFix, WaveformRecord
 from route import load_route, smooth
-from sinks import PostgresSink
+from sinks import PostgresSink, refresh_aggregates
 from supplement import Imu, Magnetometer, UvSensor
 
 DEVICE_ID = "synthetic-platform"
@@ -246,7 +246,9 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         sink.close()
 
-    print(f"\nwrote {written} rows in {time.monotonic() - started:.1f}s")
+    elapsed = time.monotonic() - started
+    refresh = refresh_aggregates(dsn)
+    print(f"\nwrote {written} rows in {elapsed:.1f}s, observation_1min refreshed in {refresh:.1f}s")
     return 0
 
 

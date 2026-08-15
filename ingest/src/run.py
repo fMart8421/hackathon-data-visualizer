@@ -20,7 +20,7 @@ import psycopg
 from cli import default_dsn
 from gnss import discover_gnss
 from loader import load, load_metric_rules
-from sinks import PostgresSink
+from sinks import PostgresSink, refresh_aggregates
 from sources import DEFAULT_RATE_HZ, discover
 
 
@@ -116,9 +116,14 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         sink.close()
 
+    # The load has finished arriving, which is exactly when the minute rollup
+    # is allowed to be rebuilt (migration 005).
+    elapsed = refresh_aggregates(default_dsn())
+
     print(
         f"\ndone: {total_rows} rows in {time.monotonic() - started:.1f}s, "
-        f"{total_suspect} outside the catalog's plausible range"
+        f"{total_suspect} outside the catalog's plausible range, "
+        f"observation_1min refreshed in {elapsed:.1f}s"
     )
     return 0
 

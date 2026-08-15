@@ -5,6 +5,10 @@ balloon is flying *now*, just faster. event_time is therefore real wall-clock
 time, and a 150 minute flight at 60x fills 2.5 minutes of the dashboard's time
 axis. ingested_at is set by the database, so the gap between the two is the
 genuine pipeline lag (DEC-01).
+
+File mode (`--sink ndjson`) writes the same flight to a file instead, as fast
+as the machine can produce it and with no acceleration applied: pacing belongs
+to whoever replays it (DEC-20).
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from contract import Batch, ObservationRecord, PositionFix
 from flight import OVAR_LAT, OVAR_LON, FlightProfile
 from sensors import build_scalar_sensors, read_scalars
-from sinks import PostgresSink
+from sinks import NdjsonSink, PostgresSink, Sink
 
 DEFAULT_SEED = 20260812
 SAMPLE_PERIOD_S = 1.0  # 1 Hz for position and the phase 2 scalars
@@ -57,7 +61,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--mission-id", default=None, help="defaults to flight-<UTC timestamp>")
     parser.add_argument("--device-id", default="balloon-01")
     parser.add_argument("--dsn", default=None, help="PostgreSQL DSN, defaults to $TELEMETRY_DSN")
-    parser.add_argument("--sink", choices=["postgres"], default="postgres", help="NDJSON lands in phase 6")
+    parser.add_argument(
+        "--sink",
+        choices=["postgres", "ndjson"],
+        default="postgres",
+        help="postgres writes live, ndjson writes a file for the replayer",
+    )
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="output file for --sink ndjson, e.g. /exports/flight.ndjson",
+    )
     parser.add_argument(
         "--on-finish",
         choices=["stop", "restart"],
@@ -109,8 +123,9 @@ def build_batch(
     )
 
 
-def run_flight(args: argparse.Namespace, sink: PostgresSink, flight_number: int) -> bool:
+def run_flight(args: argparse.Namespace, sink: Sink, flight_number: int) -> bool:
     """Fly once. Returns False if interrupted."""
+    live = args.sink == "postgres"
     duration_s = args.duration_min * 60.0
     profile = FlightProfile(
         duration_s=duration_s,
@@ -130,19 +145,30 @@ def run_flight(args: argparse.Namespace, sink: PostgresSink, flight_number: int)
         name=f"Stratospheric balloon flight {started_at.strftime('%Y-%m-%d %H:%M')} UTC",
         started_at=started_at,
         description=(
-            f"Generated flight, seed {args.seed + flight_number}, "
-            f"{args.duration_min:g} min at {args.speed:g}x from "
-            f"{args.start_lat:.4f}, {args.start_lon:.4f}."
+            "SYNTHETIC. Not measured. Generated balloon flight, seed "
+            f"{args.seed + flight_number}, {args.duration_min:g} min at {args.speed:g}x from "
+            f"{args.start_lat:.4f}, {args.start_lon:.4f}. The retired DEC-12 scenario, kept "
+            "under DEC-18 as one synthetic session among the real captures."
         ),
+        # DEC-18: nothing the generator writes may be mistakable for a
+        # measurement, whichever sink it goes to.
+        kind="synthetic",
     )
 
     total_samples = int(duration_s / SAMPLE_PERIOD_S) + 1
-    wall_duration = duration_s / args.speed
-    print(
-        f"mission {mission_id}: {total_samples} samples, {args.duration_min:g} min of flight "
-        f"in {wall_duration / 60:.1f} min of wall clock ({args.speed:g}x)",
-        flush=True,
-    )
+    if live:
+        wall_duration = duration_s / args.speed
+        print(
+            f"mission {mission_id}: {total_samples} samples, {args.duration_min:g} min of flight "
+            f"in {wall_duration / 60:.1f} min of wall clock ({args.speed:g}x)",
+            flush=True,
+        )
+    else:
+        print(
+            f"mission {mission_id}: {total_samples} samples, {args.duration_min:g} min of flight "
+            f"to {args.out} as fast as it can be written",
+            flush=True,
+        )
 
     report_every = max(1, int(total_samples / 30))
     for sample_index in range(total_samples):
@@ -151,10 +177,14 @@ def run_flight(args: argparse.Namespace, sink: PostgresSink, flight_number: int)
 
         # Wall clock instant this sample belongs to. Computed from the start
         # rather than accumulated, so scheduling jitter cannot drift the series.
-        event_time = started_at + timedelta(seconds=(sample_index * SAMPLE_PERIOD_S) / args.speed)
-        delay = (event_time - datetime.now(timezone.utc)).total_seconds()
-        if delay > 0:
-            time.sleep(delay)
+        # In file mode the flight keeps its own pace, one second per sample:
+        # compressing it would bake the acceleration into the file.
+        scale = 1.0 / args.speed if live else 1.0
+        event_time = started_at + timedelta(seconds=sample_index * SAMPLE_PERIOD_S * scale)
+        if live:
+            delay = (event_time - datetime.now(timezone.utc)).total_seconds()
+            if delay > 0:
+                time.sleep(delay)
 
         batch = build_batch(profile, sensors, mission_id, args.device_id, sample_index, event_time)
         sink.write(batch)
@@ -186,7 +216,18 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGINT, _handle_signal)
     signal.signal(signal.SIGTERM, _handle_signal)
 
-    sink = PostgresSink(args.dsn or default_dsn(), time_scale=1.0 / args.speed)
+    if args.sink == "ndjson":
+        if not args.out:
+            print("--sink ndjson needs --out FILE", file=sys.stderr)
+            return 2
+        if args.on_finish == "restart":
+            # A file holds one mission: its header is line 1. Two flights in
+            # one file would put a second header in the middle of the batches.
+            print("--sink ndjson cannot be combined with --on-finish restart", file=sys.stderr)
+            return 2
+        sink: Sink = NdjsonSink(args.out)
+    else:
+        sink = PostgresSink(args.dsn or default_dsn(), time_scale=1.0 / args.speed)
     try:
         flight_number = 0
         while True:
@@ -197,6 +238,13 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         sink.close()
 
+    if isinstance(sink, NdjsonSink):
+        size_mb = sink.path.stat().st_size / 1e6
+        print(
+            f"wrote {sink.path} ({sink.batches_written} batches, {size_mb:.1f} MB). "
+            f"Replay it with: make replay FILE={sink.path.name}",
+            flush=True,
+        )
     if _stopping:
         print("interrupted, mission closed", flush=True)
     return 0

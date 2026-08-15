@@ -1,0 +1,38 @@
+# Where alerts go: nowhere.
+#
+# The demo runs on a laptop with no SMTP server, no Slack workspace and no
+# outbound anything. A contact point that cannot deliver turns every firing
+# alert into an error in the Grafana log, which is noise at exactly the moment
+# noise is least welcome.
+#
+# So the root notification policy is muted around the clock. Rules still
+# evaluate, still change state, and still colour the alert panel on the health
+# dashboard; nothing is ever sent. Delete the mute_time_intervals line and
+# point the receiver at a real contact point to turn delivery on.
+
+apiVersion: 1
+
+muteTimes:
+  - orgId: 1
+    name: always
+    time_intervals:
+      - times:
+          - start_time: '00:00'
+            end_time: '24:00'
+
+# The mute sits on a catch-all child route, not on the root: Alertmanager
+# rejects mute_time_intervals on a root route, and Grafana reports that only as
+# "Invalid format of the submitted route" while refusing to provision anything
+# else in this directory either.
+policies:
+  - orgId: 1
+    receiver: grafana-default-email
+    group_by:
+      - grafana_folder
+      - alertname
+    routes:
+      - receiver: grafana-default-email
+        object_matchers:
+          - ['alertname', '=~', '.*']
+        mute_time_intervals:
+          - always

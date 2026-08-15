@@ -1,7 +1,7 @@
 # Multi-sensor telemetry platform: data model and project bootstrap
 
-**Status:** stack decisions locked, implementation not started
-**Last revised:** 2026-08-12
+**Status:** all seven phases implemented
+**Last revised:** 2026-08-15
 **Scope:** logical model, architecture, data generator spec, and bootstrap plan.
 
 ## How to use this file
@@ -230,7 +230,9 @@ No new semantics. Recomputable cache.
 - `waveform_envelope`: per-second envelope to preview waveforms without loading every sample.
 - `observation_geo`: view joining each observation to the interpolated position at the same instant, so map panels don't do the join at query time. Panels for requirements 2, 3, and 6 depend on this view.
 
-Implemented in phase 1 as plain views, not materialized: while the generator writes continuously a view is always current and needs no refresh job. Materializing them is a phase 6 performance decision, to be logged here if it happens, on the same terms as OPEN-08.
+Implemented in phase 1 as plain views, not materialized: while the generator writes continuously a view is always current and needs no refresh job.
+
+**Revised in phase 7, on measurement.** `observation_1min` was materialized (DEC-21): as a plain view it was slower than the base table it was meant to accelerate, because the time filter arrives on the computed `bucket_time` and cannot use the index on `event_time`. `waveform_envelope` and `observation_geo` stay plain views; both are fast enough and both must stay current while data is arriving. Phase 7 adds `mission_summary`, also a plain view.
 
 `observation_geo` resolves position as the nearest GNSS fix within 5 s rather than by linear interpolation. At 1 Hz position cadence the two are indistinguishable on a map, and if a panel ever needs true interpolation it becomes a change to this view alone.
 
@@ -344,6 +346,47 @@ The first load takes all of `Volatiles/`, `Particles/` including the three geo-r
 
 The loader is driven by file patterns rather than a hardcoded list, and is idempotent through the DEC-03 natural keys, so widening to all 80 `GNSSprecision` files, or to the whole RTK export, is a configuration change and a re-run rather than new code.
 
+### DEC-20: the file is the contract, the replay decides the clock
+
+File mode writes the batch structure documented under "Data contract", one JSON object per line, preceded by a single mission header line `{"mission": {...}}`. The header carries `mission_id`, `name`, `started_at`, `description` and `kind`; the batch lines are unchanged, and the two are told apart by the top-level `mission` key. A file without a header still replays, and is assumed synthetic, because that is the assumption that cannot mislabel generated data as measured (DEC-18).
+
+Nothing about pacing is stored in the file. `batch_time` advances at the flight's own rate and `t_offset_ms` stays in flight time, so `--speed` is meaningless at export and decisive at replay.
+
+The replayer re-anchors by default: the first batch lands now, under a fresh mission id, and the rest follow at their recorded spacing. `--anchor original` keeps the file's timestamps and id, which is idempotent through the DEC-03 natural keys and therefore writes nothing on a second run. The fresh id matters for the same reason: batches keep their `seq`, so replaying twice under one id would collide with the natural key and insert nothing, which on a dashboard is indistinguishable from a dead pipeline.
+
+Acceleration moves `event_time`, not just the insertion pace. This is DEC-16 again, and it was got wrong first: shifting the timestamps by a constant while inserting 60x faster ran `event_time` an hour ahead of the clock and turned the lag panel to minus five minutes. At 60x, ten minutes of flight must occupy ten seconds of the axis.
+
+### DEC-21: the minute rollup is materialized, the live tables are not
+
+`observation_1min` is a materialized view with a unique index, refreshed `CONCURRENTLY` at the end of `make ingest`, `make supplement` and `make replay`, and on demand with `make refresh`.
+
+Measured against the real 1.66 M observations, over a fourteen-month window:
+
+| Query | Time |
+|---|---|
+| long window off `observation_1min` as a plain view | 442 ms |
+| the same window straight off `observation` | 181 ms |
+| the same window off the materialized rollup | 0.8 ms |
+
+The plain view was slower than not using it, because the predicate arrives on `bucket_time`, which the view computes, so the index on `event_time` cannot serve it; `date_trunc` on a `timestamptz` is STABLE rather than IMMUTABLE, so an expression index cannot fix it either. Materializing costs 13 MB against an 821 MB base table, and a full concurrent refresh takes 665 ms.
+
+The staleness rule that comes with it: **live panels read the base tables**, and the rollup serves long windows over data that has finished arriving. No dashboard queried `observation_1min` before this change, so nothing silently changed meaning under a panel.
+
+### DEC-22: alerts are catalog-driven, and never delivered
+
+Closes OPEN-06. Three rules in `grafana/provisioning/alerting/rules.yml`, provisioned like everything else (DEC-10): a reading outside the band declared in `metric.warn_low`/`warn_high`, end-to-end ingest lag above 5 s, and a mission still open with nothing written to it for 30 s.
+
+The thresholds for the first live in the catalog, not in the rule, so arming an alert for a new quantity is an `UPDATE metric`, on the same principle as "a new sensor is a catalog row". No `alert_rule` entity was added: it would duplicate what `metric` already holds.
+
+Nothing is sent anywhere. The notification policy mutes every route around the clock, because the demo machine has no SMTP server and a contact point that cannot deliver turns every firing alert into an error in the log. Alert state is for the screen.
+
+Two constraints that shaped how the rules are written, both found by testing rather than by reading:
+
+- **Every query returns exactly one series**, grouped on a constant text column. Grafana's PostgreSQL datasource turns a string column into a series *name*, not a label, and alerting reads only labels; a query grouped by `metric_key` hands the evaluator N frames with identical empty label sets and the rule dies with "frame cannot uniquely be identified by its labels". With a single breach it looks like it works, which is why it was only caught by arming two metrics at once.
+- **Never a bare aggregate.** With nothing running, `SELECT max(...)` still returns one row with a null timestamp, and the rule errors with "input has null time values" instead of reporting no data. Grouping on the constant makes an idle machine return zero rows, which `noDataState: OK` turns into silence.
+
+The cost is that an alert says what happened but not to which metric or mission; that detail is one panel away on the health dashboard, and each rule's description says where to look.
+
 ## Generator specification
 
 ### Flight profile
@@ -393,9 +436,21 @@ Implemented in `generator/src/cli.py`:
 | `--mission-id` | `flight-<UTC timestamp>` | a fresh mission per run, so re-running always produces visibly new data |
 | `--device-id` | `balloon-01` | must exist in the `device` seed |
 | `--dsn` | `$TELEMETRY_DSN` | |
-| `--sink` | `postgres` | NDJSON lands in phase 6 |
-| `--on-finish` | `stop` | `restart` flies again under a new mission id |
+| `--sink` | `postgres` | `ndjson` writes a file instead (DEC-20) |
+| `--out` | none | required by `--sink ndjson`, e.g. `/exports/flight.ndjson` |
+| `--on-finish` | `stop` | `restart` flies again under a new mission id. Rejected with `--sink ndjson`: a file holds one mission, and its header is line 1 |
 | `--quiet` | off | suppress the per-sample progress lines |
+
+Replayer flags, `replayer/src/replay.py`:
+
+| Flag | Default | Notes |
+|---|---|---|
+| `--file` | required | NDJSON produced by `--sink ndjson` |
+| `--speed` | `1.0` | acceleration. Moves `event_time` as well as the pace (DEC-20) |
+| `--anchor` | `now` | `original` keeps the file's timestamps and mission id |
+| `--mission-id` / `--device-id` | from the file | override what the replay writes under |
+| `--limit` | none | stop after this many batches |
+| `--dry-run` | off | read and report, write nothing |
 
 ## Data contract
 
@@ -477,13 +532,18 @@ Designs for the phase 6 domains, recorded now because they are the specification
 │   │   └── cli.py             arguments and main loop
 │   └── tests/
 ├── replayer/
-│   └── src/replay.py          reads NDJSON, inserts at timestamp pace
+│   ├── src/replay.py          reads NDJSON, inserts at timestamp pace
+│   └── tests/
+├── exports/                   NDJSON flights, gitignored
 └── grafana/
     ├── provisioning/
     │   ├── datasources/       PostgreSQL configured via environment variables
-    │   └── dashboards/        points at the dashboard JSON directory
+    │   ├── dashboards/        points at the dashboard JSON directory
+    │   └── alerting/          rules and the muted notification policy (DEC-22)
     └── dashboards/            one JSON per dashboard, versioned
 ```
+
+`README.md` (running and demonstrating it) and `EXPLAINME.md` (what the data is, and which parts are real) sit at the root alongside `CLAUDE.md`.
 
 ## Environment and commands
 
@@ -496,9 +556,11 @@ Targets to expose in a `Makefile`:
 | `make reset` | drop the volume and recreate from scratch |
 | `make generate` | run the generator in direct mode, real time |
 | `make demo` | run the generator at 60x acceleration, for demonstration |
-| `make export FILE=flight.ndjson` | generate a full flight to file |
-| `make replay FILE=flight.ndjson` | replay a file into the database |
-| `make test` | generator tests |
+| `make export FILE=flight.ndjson` | generate a full flight to `exports/` |
+| `make replay FILE=flight.ndjson` | replay a file into the database, re-anchored to now |
+| `make replay-dry FILE=flight.ndjson` | read and report, write nothing |
+| `make refresh` | rebuild the `observation_1min` rollup (DEC-21) |
+| `make test` | generator, ingest and replayer tests |
 
 Grafana at `localhost:3000`, PostgreSQL at `localhost:5432`. Credentials in `.env`, with `.env.example` versioned.
 
@@ -522,9 +584,15 @@ Phases 1 and 2 are done. Phases 3 onward were rewritten on 2026-08-13, when real
 
 The reference layout was still not consulted: the Claude Design link is blocked by browsing policy in the available browser (OPEN-14).
 
-**Phase 6, synthetic supplement.** The generator reworked under DEC-18 to extend the real campaigns rather than fly a balloon: geomagnetic vector, accelerometer and gyroscope blocks, UV index, all labelled `kind = synthetic`. Waveform envelope view. Criterion: requirements 3, 4, 5, and 8 have panels, and no panel can be mistaken for measured data.
+**Phase 6, synthetic supplement. Done.** `generator/src/supplement.py` and `route.py`, run by `make supplement`. One mission, `synthetic-taveiro-2025-06-28`, labelled `kind = 'synthetic'`: UV index all day at 0.2 Hz, and over a 79 minute window the platform follows a real recorded route adding `mag_field` at 1 Hz and 100 Hz `acceleration` and `angular_rate` in one-second blocks. Dashboards `magnetometer`, `imu` and `uv-index`. This is the first data ever written to `waveform_block`, and the first use of `waveform_envelope`.
 
-**Phase 7, polish.** File mode and replayer, aggregates, alerts, pipeline health panel, README with demo instructions.
+**How DEC-18 was honoured.** Every synthetic quantity is anchored to something real rather than invented: the magnetic field is the actual field at Taveiro (44.5 uT, 55 degrees inclination), the attitude comes from a route that was genuinely ridden, the yaw rate driving the gyroscope is that route's own curvature, and the UV curve is the real solar elevation over this site and date. Each channel carries the specific error its part would have, so `value_raw` and `value` differ the way they do in the real logs (DEC-05): a hard-iron offset on the magnetometer, a dark current on the UV photodiode that keeps the raw trace above zero all night.
+
+**Where it is not real, it says so.** The mission description opens with "SYNTHETIC. Not measured.", the device is `synthetic-platform`, all three dashboards carry a banner and "(synthetic)" in the title, and `metric-explorer` gained a `$kind` variable defaulting to `measured` so a measured series is never averaged with a generated one.
+
+**Phase 7, polish. Done.** File mode (`--sink ndjson`) and the replayer under DEC-20, the minute rollup materialized under DEC-21, three provisioned alert rules under DEC-22, `platform-health` reworked into the `Pipeline health` dashboard and verified in the browser, and two documents for people rather than for the model: `README.md` for running and demonstrating it, `EXPLAINME.md` for what the data is and which parts of it are real.
+
+One defect fixed on the way, unrelated to the new work: the balloon generator opened its missions with the default `kind = 'measured'`. Migration `004` had backfilled the old ones, so the database looked right while every new run was mislabelled. It now passes `kind = 'synthetic'` explicitly, which is what DEC-18 requires of any writer.
 
 ## Acceptance criteria
 
@@ -534,28 +602,28 @@ Revised 2026-08-13 for real data. The source column says what feeds the panel: `
 |---|---|---|---|
 | 1 | measured | Geomap of the RTK base and rover, plus the survey-in convergence series | Every capture in the provided data is a static occupation, so this is a precision panel, not a track: the RTK-fixed rover holds 1.9 cm against 3.2 m standalone, and survey accuracy converges from 0.117 m to 0.013 m. The one real route in the project is the geo-referenced particle runs under requirement 2 |
 | 2 | measured | Gas species selector plus linked time series, and PM on the map from the `_Coord` bike runs | species selector updates chart; the bike runs colour a real route by concentration |
-| 3 | synthetic | Geomap with rotated markers | arrows change direction; panel labelled as synthetic |
-| 4 | synthetic | Acceleration and angular rate series, 3 components each | transient identifiable; panel labelled as synthetic |
-| 5 | synthetic | UV index bar gauge, 0 to 12 | coloured thresholds; panel labelled as synthetic |
+| 3 | synthetic | `magnetometer`: geomap with markers rotated to the horizontal field bearing, plus components over the ride | Arrows change direction because the rider turned. Bx and By swap between +25 and -25 uT around the loop while the total holds at 44.5, which is the physics being right rather than a drawing |
+| 4 | synthetic | `imu`: acceleration and angular rate, one panel per axis | X and Y sit on zero, Z sits on 9.8 because gravity is on the vertical axis. Envelope RMS 9.839 |
+| 5 | synthetic | `uv-index`: gauge on the WHO bands plus a 24 hour profile | Peaks at 8.1 after solar noon, zero overnight. The raw trace never reaches zero, because a photodiode reads its own dark current |
 | 6 | measured | Temperature and humidity, from the Alcohol and CH4 logs | **Time series, not a geomap:** the bench rigs that measured T/RH carry no GPS at all, so a map would need a coordinate nothing recorded. Only the synthetic balloon has T/RH co-located with position; a real geomap for this requirement is deferred to phase 6 (OPEN-11). Pressure is absent from the provided data and is not faked |
 | 7 | either | Metric variable with repeated panel | adding a row to `metric` produces a new panel without editing JSON |
-| 8 | synthetic | Channel and axis variable for waveforms | axis choice changes the panel |
+| 8 | synthetic | `imu`: `$channel` and `$axis` variables driving a repeated panel | Axis choice changes what is plotted with no JSON edit. Blocks are expanded to samples at query time; 18100 samples over a three minute window in 7 ms |
 | 9 | either | PostgreSQL datasource, auto-refresh on | data changes without reloading the page |
 
 ## Open questions
 
 | ID | Question | Impact | Status |
 |---|---|---|---|
-| OPEN-03 | IMU cadence in the scenario: is 100 Hz enough or does it need more? | Sizes `waveform_block` and panel performance | decide in phase 4, start at 100 Hz |
-| OPEN-04 | Data retention between demos | Determines whether `make reset` runs before each presentation | to decide |
+| OPEN-03 | IMU cadence in the scenario: is 100 Hz enough or does it need more? | Sizes `waveform_block` and panel performance | for now it is enough |
+| OPEN-04 | Data retention between demos | Determines whether `make reset` runs before each presentation | data should be retained |
 | OPEN-05 | Single balloon or several at once? | Several turn `device_id` into a dashboard variable and enrich the demo | phase 1 seeds one device, `balloon-01`. Schema and natural keys already carry `device_id`, so a second platform is a seed row plus a variable. Revisit before the demo |
-| OPEN-06 | Are alerts in scope? | Slide 126 lists "warnings". If so, an `alert_rule` entity and status panels are missing | to decide, phase 6 |
-| OPEN-08 | Is TimescaleDB needed? | Only if waveform panels turn out slow | re-evaluate in phase 6, now that waveforms are synthetic only |
+| OPEN-06 | Are alerts in scope? | Slide 126 lists "warnings". If so, an `alert_rule` entity and status panels are missing | **Closed in phase 7: yes.** Three provisioned Grafana rules, thresholds read from the `metric` catalog, delivery muted. No `alert_rule` entity: the catalog already holds the thresholds. See DEC-22 |
+| OPEN-08 | Is TimescaleDB needed? | Only if waveform panels turn out slow | **Closed in phase 7: no.** Measured on the real data: blocks expanded to samples over a three minute window 2 ms, the whole ride's envelope 94 ms, the geo-referenced map join 118 ms, a fourteen-month rollup window 0.8 ms after DEC-21. Nothing here needs a hypertable, and the extension would be a dependency bought with no measurement behind it |
 | OPEN-09 | RTK export from MATLAB | 18703 files hold the best GNSS data but are MCOS objects Python cannot read | **Closed in phase 4.** `RTK_25Nov` and `RTK_27Nov` exported and ingested, five captures per session. Widening means raising `maxFilesPerSession` and re-running; the ingest is idempotent |
 | OPEN-13 | Capture date for `RTK_BaseRover` | Its 312910 rows carry seconds-of-day and nothing else: no date in the filename, none in the struct, and the export drops the MATLAB header. Anchoring it would mean inventing a date, so it is not ingested | ask whoever ran the capture; it adds a third fix quality (DGPS) to the precision comparison |
 | OPEN-14 | Reference layout inaccessible | The Claude Design link was refused by the in-app browser twice before succeeding on a later attempt, so the earlier failures were transient rather than a hard policy block | **Closed 2026-08-14.** Prototype reviewed, findings and the phase 6 panel designs recorded under "Reference layout" |
 | OPEN-10 | Time base for sources with no timestamps | `Particles/`, `Alcohol/` and `CH4/` record sample order only | **Closed in phase 3.** 1 Hz assumed, from the capture date in the filename. `--rate-hz` overrides it, and every affected `mission.description` states the assumption and that the axis is not measured time |
-| OPEN-11 | Is synthetic supplementation acceptable to the evaluators? | Requirements 3, 4, 5 and 8 have no measured data. If generated data is not acceptable, four requirements go unanswered and phase 6 should be dropped rather than built | ask the organisers |
+| OPEN-11 | Is synthetic supplementation acceptable to the evaluators? | Requirements 3, 4, 5 and 8 have no measured data. If generated data is not acceptable, four requirements go unanswered and phase 6 should be dropped rather than built | **Closed 2026-08-15: accepted.** Confirmed by the user. The labelling built in phase 6 stays exactly as it is: it was never only a hedge against the answer being no, it is what keeps a generated number from being read as a measured one |
 | OPEN-12 | Which quantity does `CH4/` actually hold? | The logger header says "ALCOHOL 3" and labels the column `Etanol [ppm]`, but the folder and filename say CH4 | **Closed in phase 3:** filed as `ch4_concentration`, trusting the folder and filename over a header that looks copy-pasted from the alcohol logger. The contradiction is recorded in the description of both `ch4-*` missions. Revisit if whoever ran the capture says otherwise |
 
 ## Closed questions
@@ -570,10 +638,12 @@ Revised 2026-08-13 for real data. The source column says what feeds the panel: `
 
 | Date | Change |
 |---|---|
+| 2026-08-15 | Phase 7 implemented, and the roadmap is complete. File mode and the replayer (DEC-20): a 150 minute flight exports to 601 batches per 10 minutes of flight, and replays at 60x with 1 ms average lag, 30 ms worst. `observation_1min` materialized after measurement showed the plain view was 2.4x *slower* than the base table it was meant to accelerate, 442 ms against 181 ms; materialized it is 0.8 ms for 13 MB and a 665 ms concurrent refresh (DEC-21). Three provisioned alert rules reading their thresholds from the catalog, delivery muted (DEC-22), closing OPEN-06. `platform-health` reworked into `Pipeline health` and verified in the browser. `README.md` and `EXPLAINME.md` written. OPEN-08 closed on measured numbers: no TimescaleDB. OPEN-11 closed: the user confirmed synthetic supplementation is accepted. Five bugs worth recording, four of them only findable by running the thing: (1) the replayer first shifted timestamps by a constant while inserting 60x faster, so `event_time` ran ahead of the clock and the lag panel read minus five minutes — acceleration has to move event time too, which is DEC-16 restated; (2) `mission_summary` written with a LATERAL subquery per mission took 5.2 s, fifty missions times four scans over 1.66 M rows, on a panel that refreshes every five seconds; one grouped pass per table joined once is 12 ms; (3) Grafana rejects `mute_time_intervals` on a root notification route and reports it only as "Invalid format of the submitted route", while refusing to provision every other alerting file in the directory; (4) an alert query that is a bare aggregate returns one row with a null timestamp when nothing is running, and errors instead of reporting no data; (5) an alert query grouped by `metric_key` works with one breaching metric and dies with "frame cannot uniquely be identified by its labels" with two, because the PostgreSQL datasource turns a string column into a series name rather than a label — caught only by deliberately arming two metrics to breach at once. Also fixed a pre-existing DEC-18 violation: the balloon generator was opening its missions as `measured`, hidden by migration `004` having backfilled the older ones. |
 | 2026-08-11 | Initial version. Three-layer model, DEC-01 to DEC-08, seven open questions. |
 | 2026-08-12 | Grafana approved, stack locked (DEC-09, DEC-10). Confirmed no data was provided: generator becomes the data source (DEC-11) with a stratospheric balloon scenario (DEC-12). Added architecture, generator spec, repository layout, commands, six-phase roadmap, and acceptance criteria. Closed OPEN-01, OPEN-02, OPEN-07. |
 | 2026-08-12 | Added reference layout link (Claude Design prototype) as the basis for phase 5 panel organization. |
 | 2026-08-12 | Translated both project files (CLAUDE.md, data-model.md) from Portuguese to English for token efficiency. |
+| 2026-08-14 | Phase 6 implemented, closing requirements 3, 4, 5 and 8. `make supplement` writes one synthetic mission: 17280 UV samples across the day, and over a 79 minute window 4731 magnetic vectors plus 9462 waveform blocks holding 1.4 million IMU samples, 36204 rows in 3.2 s and idempotent on re-run. First data ever written to `waveform_block`; `waveform_envelope` reduces an hour of 100 Hz data to 4731 rows and reports a vertical RMS of 9.839, which is gravity. Three dashboards added and verified in the browser. Two bugs found only by looking: the axis selector repeated the same double-quoting mistake as the metric explorer (`CASE '$axis'` against a multi-valued variable becomes `CASE ''x''`), and sizing the magnetometer arrows by field strength was meaningless because the horizontal field is constant at this site, so every arrow came out identical. `metric-explorer` gained a `$kind` variable defaulting to `measured`: it had been averaging the balloon's -56 C together with real bench temperatures in one series, which is exactly the confusion DEC-18 exists to prevent. OPEN-11 remains unanswered; the work proceeded on the user's instruction, with labelling built in so the answer can still be no. |
 | 2026-08-14 | Reference layout finally reachable and reviewed; OPEN-14 closed. The prototype's domain split matches the dashboards already built, so the main change is a tag-driven link bar on every dashboard standing in for its tab row. Two prototype ideas are not reproducible and are recorded as such: the meteorology geomap needs a position the measuring rigs never recorded, and the session playback scrubber has no Grafana equivalent. Captured the magnetometer, accel/gyro and UV panel designs into the doc as the specification for phase 6. |
 | 2026-08-14 | Phase 5 verified in the browser, and six bugs fixed that every query-level check had passed. The Grafana admin password was made available, so each dashboard was finally opened and looked at. (1) `metric-explorer` rendered 24 correctly-titled panels that all errored: `$metric` is multi-valued, so Grafana quotes each value itself and `= '$metric'` produced `''air_temperature''`; now `IN ($metric)`. (2) The particle size selector was written `pm2_5 : PM2.5`, but Grafana custom variables are `display : value`, so the variable's value was the label and both PM panels were empty. (3) `conppm` and `conugm3` are not unit ids in Grafana 12 and rendered as literal text on every axis; replaced with explicit `suffix:` units. (4) Both geomap layers drew the same query, so the RTK rover never appeared and the map showed one marker instead of two; fixed with `filterData` per layer. (5) The RTK-fixed error series sat exactly on the log axis floor and was invisible next to the standalone series. (6) The survey-in table joined `position` and `observation` for the same mission, squaring a 101852-fix occupation into ten billion rows; rewritten with correlated subqueries, 276 ms. Split `gnss-precision` into `gnss-rtk` + `gnss-survey` and `air-quality` into `volatiles` + `particulates`, one per capture epoch, because a dashboard-wide time range cannot serve datasets months apart. Also: PowerShell 5.1 writes a BOM with `Set-Content -Encoding UTF8`, which Grafana's JSON parser rejects, so `weather.json` silently failed to provision for several minutes while the cached previous version kept rendering. Dashboard JSON must be written without a BOM. |
 | 2026-08-14 | Phase 5 implemented. Four dashboards, all provisioned automatically: `gnss-precision.json` (req. 1: RTK base/rover geomap, 12-day survey-in convergence 0.117 m to 0.013 m, RTK-fixed vs standalone comparison), `air-quality.json` (req. 2: $gas/$mission-chained species selector with raw-vs-calibrated, PM geomap on the three bike routes coloured by concentration), `weather.json` (req. 6: temperature and humidity as linked time series, explicitly not a geomap — the measuring bench rigs carry no GPS, only the synthetic balloon does; deferred to phase 6 as OPEN-11 already anticipated), `metric-explorer.json` (req. 7: one native Grafana panel-repeat over a $metric variable scoped to metrics with at least one observation, so an empty catalog row does not render as a permanently blank panel). Requirement 9 needed no new work, confirmed still true against real data. Every panel's SQL was run against the exact `grafana_ro` role with real substituted variable values before being embedded in JSON, which caught a real bug: the PM geomap's default time window started a day after the bike runs it was meant to show, returning zero rows silently. A second bug caught before it ever ran: a resistance panel joined `gas_sensor_resistance` to a gas metric by `(mission, device, seq)` without `sensor_id`, which would have cross-joined whenever two sensors report at the same seq — true for `co_concentration`, measured by both MiCS-5524 and MiCS-6814. Fixed by dropping the join and grouping by `sensor_id` directly. The Claude Design reference layout was not reachable in this environment; opened OPEN-14. |

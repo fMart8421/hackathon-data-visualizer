@@ -1,25 +1,44 @@
 {
   "uid": "platform-health",
-  "title": "Platform health",
-  "description": "Phase 1 smoke dashboard: proves Grafana reads PostgreSQL, and shows the catalog every other dashboard is built from.",
-  "tags": ["telemetry", "phase-1"],
+  "title": "Pipeline health",
+  "description": "Phase 7. What is in this database, how it got there, and whether it is still arriving. The lag panels read ingest_batch: batch_time is when the platform measured, received_at is when the row landed (DEC-01), and the gap between them is this pipeline and nothing else. File loads are excluded from the live panels on purpose: their lag is the age of the capture, which is months and means nothing. Alert rules are provisioned in grafana/provisioning/alerting and never deliver anywhere (OPEN-06).",
+  "tags": ["telemetry", "phase-7", "health"],
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "Telemetry",
+      "tags": ["telemetry"],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link",
+      "tooltip": "",
+      "url": ""
+    }
+  ],
   "timezone": "utc",
   "editable": true,
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "5s",
-  "time": { "from": "now-6h", "to": "now" },
+  "time": { "from": "now-15m", "to": "now" },
   "panels": [
     {
-      "id": 1,
-      "type": "table",
-      "title": "Stored records",
-      "description": "Zero everywhere until the phase 2 generator runs. A flat panel with rows present is a dashboard bug; zero rows is expected here.",
+      "id": 10,
+      "type": "stat",
+      "title": "Observations",
       "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
-      "options": { "showHeader": true },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
       "fieldConfig": {
-        "defaults": { "custom": { "align": "auto" } },
+        "defaults": { "unit": "locale", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } },
         "overrides": []
       },
       "targets": [
@@ -29,20 +48,354 @@
           "rawQuery": true,
           "editorMode": "code",
           "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
-          "rawSql": "SELECT 'mission' AS table_name, count(*) AS row_count FROM mission\nUNION ALL SELECT 'position', count(*) FROM position\nUNION ALL SELECT 'observation', count(*) FROM observation\nUNION ALL SELECT 'waveform_block', count(*) FROM waveform_block\nUNION ALL SELECT 'event', count(*) FROM event\nUNION ALL SELECT 'ingest_batch', count(*) FROM ingest_batch\nORDER BY 1;"
+          "rawSql": "SELECT count(*) AS observations FROM observation;"
         }
       ]
     },
     {
-      "id": 2,
+      "id": 11,
+      "type": "stat",
+      "title": "GNSS fixes",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "locale", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT count(*) AS positions FROM position;"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "IMU samples",
+      "description": "Held in blocks, never one row per sample (DEC-07): this many samples live in a few thousand rows.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "locale", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT coalesce(sum(sample_count), 0) AS samples FROM waveform_block;"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Missions",
+      "description": "DEC-18. Every generated capture is labelled, so the two can never be added together by accident.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 4, "w": 5, "x": 12, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": true },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "justifyMode": "auto",
+        "orientation": "horizontal"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "locale", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "text" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "synthetic" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-orange" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "measured" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT\n  count(*) FILTER (WHERE kind = 'measured')  AS measured,\n  count(*) FILTER (WHERE kind = 'synthetic') AS synthetic\nFROM mission;"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Lag",
+      "description": "received_at minus batch_time on the newest direct or replay batch. About 1 ms when healthy.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 4, "w": 3, "x": 17, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "semi-dark-orange", "value": 1000 },
+              { "color": "red", "value": 5000 }
+            ]
+          },
+          "noValue": "no live run"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT extract(epoch FROM received_at - batch_time) * 1000 AS lag_ms\nFROM ingest_batch\nWHERE source IN ('direct', 'replay')\nORDER BY received_at DESC\nLIMIT 1;"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "stat",
+      "title": "Silence",
+      "description": "Turns red at 30 s, the same threshold the 'Live stream stopped mid-mission' alert uses.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 30 }
+            ]
+          },
+          "noValue": "never"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT extract(epoch FROM now() - max(received_at)) AS seconds\nFROM ingest_batch\nWHERE source IN ('direct', 'replay');"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "End-to-end lag, live paths",
+      "description": "Empty unless the generator or the replayer is running. That is the correct empty: file loads write historical timestamps, so their lag is the age of the capture rather than a pipeline measurement.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 10, "showPoints": "auto", "spanNulls": false }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT $__timeGroup(received_at, '$__interval') AS time,\n       source AS metric,\n       avg(extract(epoch FROM received_at - batch_time)) * 1000 AS lag_ms\nFROM ingest_batch\nWHERE $__timeFilter(received_at) AND source IN ('direct', 'replay')\nGROUP BY 1, 2\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Rows arriving per second",
+      "description": "Requirement 9 made visible: this is the dashboard watching data arrive while the page is open.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "rowsps",
+          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 60, "showPoints": "never", "spanNulls": false }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT $__timeGroup(received_at, '$__interval') AS time,\n       source AS metric,\n       sum(record_count) / ($__interval_ms / 1000.0) AS rows_per_second\nFROM ingest_batch\nWHERE $__timeFilter(received_at)\nGROUP BY 1, 2\nORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "alertlist",
+      "title": "Alert rules",
+      "description": "Provisioned from grafana/provisioning/alerting/rules.yml. The catalog rule takes its thresholds from metric.warn_low / warn_high, so arming an alert for a new quantity is a catalog row, not a rule edit. Nothing is ever delivered: the notification policy is muted around the clock.",
+      "gridPos": { "h": 9, "w": 10, "x": 0, "y": 12 },
+      "options": {
+        "viewMode": "list",
+        "groupMode": "default",
+        "maxItems": 20,
+        "sortOrder": 3,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "dashboardTitle": "",
+        "folder": "",
+        "showInactiveAlerts": true,
+        "showInstances": false,
+        "stateFilter": {
+          "firing": true,
+          "pending": true,
+          "noData": true,
+          "normal": true,
+          "error": true
+        }
+      }
+    },
+    {
+      "id": 31,
+      "type": "table",
+      "title": "Recent batches",
+      "description": "One row per batch written. seq is the generator's counter, and the natural key that makes a re-run insert nothing (DEC-03).",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 9, "w": 14, "x": 10, "y": 12 },
+      "options": { "showHeader": true },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "lag_s" },
+            "properties": [{ "id": "unit", "value": "s" }, { "id": "decimals", "value": 3 }]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT received_at, batch_time,\n       extract(epoch FROM received_at - batch_time) AS lag_s,\n       mission_id, device_id, source, seq, record_count, status\nFROM ingest_batch\nWHERE $__timeFilter(received_at)\nORDER BY received_at DESC\nLIMIT 50;"
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "type": "table",
+      "title": "What is in this database",
+      "description": "Every capture, measured or generated, from the mission_summary view (migration 005). Ignores the dashboard time range on purpose: the captures are a year apart and this is an inventory, not a series.",
+      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 21 },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "first_observation", "desc": false }] },
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "kind" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "measured": { "color": "green", "index": 0, "text": "measured" },
+                      "synthetic": { "color": "semi-dark-orange", "index": 1, "text": "synthetic" },
+                      "mixed": { "color": "yellow", "index": 2, "text": "mixed" }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
+          "rawSql": "SELECT kind::text AS kind, mission_id, observations, metrics, positions,\n       waveform_blocks, waveform_samples, suspect,\n       first_observation, last_observation, sources\nFROM mission_summary\nORDER BY kind, coalesce(first_observation, started_at);"
+        }
+      ]
+    },
+    {
+      "id": 50,
       "type": "table",
       "title": "Metric catalog",
-      "description": "Source of truth for dashboard variables. Adding a row here must be enough to get a new panel (requirement 7).",
+      "description": "The source of truth for dashboard variables, repeated panels and the catalog alert rule. Adding a row here must be enough to get a new panel (requirement 7) and, if it carries a warning band, a new alert. Sample counts come from the observation_1min rollup, so they move when a load finishes rather than continuously.",
       "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
-      "gridPos": { "h": 16, "w": 16, "x": 8, "y": 0 },
+      "gridPos": { "h": 12, "w": 16, "x": 0, "y": 33 },
       "options": { "showHeader": true },
       "fieldConfig": {
-        "defaults": { "custom": { "align": "auto" } },
+        "defaults": { "custom": { "align": "auto", "filterable": true } },
         "overrides": []
       },
       "targets": [
@@ -52,16 +405,17 @@
           "rawQuery": true,
           "editorMode": "code",
           "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
-          "rawSql": "SELECT metric_key, kind, canonical_unit, display_unit, valid_min, valid_max, warn_high, frame\nFROM metric\nORDER BY kind, metric_key;"
+          "rawSql": "SELECT m.metric_key, m.kind::text AS kind, m.canonical_unit, m.display_unit,\n       m.warn_low, m.warn_high, m.valid_min, m.valid_max,\n       coalesce(r.samples, 0) AS samples\nFROM metric m\nLEFT JOIN (\n  SELECT metric_key, sum(sample_count) AS samples\n  FROM observation_1min GROUP BY metric_key\n) r ON r.metric_key = m.metric_key\nORDER BY m.kind, m.metric_key;"
         }
       ]
     },
     {
-      "id": 3,
+      "id": 51,
       "type": "table",
-      "title": "Sensors on the platform",
+      "title": "Devices and sensors",
+      "description": "A new sensor is a catalog row, never a schema or panel change.",
       "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
-      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "gridPos": { "h": 12, "w": 8, "x": 16, "y": 33 },
       "options": { "showHeader": true },
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto" } },
@@ -74,30 +428,7 @@
           "rawQuery": true,
           "editorMode": "code",
           "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
-          "rawSql": "SELECT device_id, sensor_id, model, manufacturer, mount_position\nFROM sensor\nORDER BY device_id, sensor_id;"
-        }
-      ]
-    },
-    {
-      "id": 4,
-      "type": "table",
-      "title": "Recent ingest batches",
-      "description": "Pipeline health: batch_time is when the platform measured, received_at is when the row landed (DEC-01). The gap is end-to-end lag.",
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
-      "options": { "showHeader": true },
-      "fieldConfig": {
-        "defaults": { "custom": { "align": "auto" } },
-        "overrides": []
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "format": "table",
-          "rawQuery": true,
-          "editorMode": "code",
-          "datasource": { "type": "grafana-postgresql-datasource", "uid": "telemetry-postgres" },
-          "rawSql": "SELECT received_at, batch_time,\n       round(extract(epoch FROM received_at - batch_time)::numeric, 3) AS lag_s,\n       mission_id, device_id, source, seq, record_count, status\nFROM ingest_batch\nWHERE $__timeFilter(received_at)\nORDER BY received_at DESC\nLIMIT 50;"
+          "rawSql": "SELECT device_id, sensor_id, model, mount_position\nFROM sensor\nORDER BY device_id, sensor_id;"
         }
       ]
     }
